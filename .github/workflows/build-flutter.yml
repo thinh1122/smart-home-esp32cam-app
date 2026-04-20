@@ -8,89 +8,9 @@ on:
   workflow_dispatch:
 
 jobs:
-  build-android:
-    runs-on: ubuntu-latest
-    
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-      
-    - name: Setup Java
-      uses: actions/setup-java@v4
-      with:
-        distribution: 'zulu'
-        java-version: '17'
-        
-    - name: Setup Flutter
-      uses: subosito/flutter-action@v2
-      with:
-        flutter-version: '3.24.3'
-        channel: 'stable'
-        
-    - name: Get dependencies
-      run: flutter pub get
-      
-    - name: Analyze code
-      run: flutter analyze --no-fatal-infos
-      
-    - name: Run tests
-      run: flutter test --no-pub --coverage
-      
-    - name: Build APK
-      run: flutter build apk --release --split-per-abi
-      
-    - name: Build App Bundle
-      run: flutter build appbundle --release
-      
-    - name: Upload APK artifacts
-      uses: actions/upload-artifact@v4
-      with:
-        name: android-apk
-        path: |
-          build/app/outputs/flutter-apk/*.apk
-          
-    - name: Upload AAB artifacts
-      uses: actions/upload-artifact@v4
-      with:
-        name: android-aab
-        path: build/app/outputs/bundle/release/*.aab
-
-  # ⭐ TẠM THỜI TẮT iOS BUILD - Cần Apple Developer Account  
-  # build-ios:
-  #   runs-on: macos-latest
-  #   
-  #   steps:
-  #   - name: Checkout code
-  #     uses: actions/checkout@v4
-  #     
-  #   - name: Setup Flutter
-  #     uses: subosito/flutter-action@v2
-  #     with:
-  #       flutter-version: '3.24.3'
-  #       channel: 'stable'
-  #       
-  #   - name: Get dependencies
-  #     run: flutter pub get
-  #     
-  #   - name: Build iOS (no signing)
-  #     run: flutter build ios --release --no-codesign
-  #     
-  #   - name: Create IPA
-  #     run: |
-  #       mkdir -p build/ios/ipa
-  #       cd build/ios/iphoneos
-  #       mkdir Payload
-  #       cp -r Runner.app Payload/
-  #       zip -r ../ipa/SmartHome.ipa Payload/
-  #       
-  #   - name: Upload IPA artifacts
-  #     uses: actions/upload-artifact@v4
-  #     with:
-  #       name: ios-ipa
-  #       path: build/ios/ipa/*.ipa
-
-  build-web:
-    runs-on: ubuntu-latest
+  # ⭐ CHỈ BUILD iOS - Tắt Android và Web để tiết kiệm tài nguyên
+  build-ios:
+    runs-on: macos-latest
     
     steps:
     - name: Checkout code
@@ -105,17 +25,25 @@ jobs:
     - name: Get dependencies
       run: flutter pub get
       
-    - name: Build Web
-      run: flutter build web --release --web-renderer html
+    - name: Build iOS (no signing)
+      run: flutter build ios --release --no-codesign
       
-    - name: Upload Web artifacts
+    - name: Create IPA
+      run: |
+        mkdir -p build/ios/ipa
+        cd build/ios/iphoneos
+        mkdir Payload
+        cp -r Runner.app Payload/
+        zip -r ../ipa/SmartHome.ipa Payload/
+        
+    - name: Upload IPA artifacts
       uses: actions/upload-artifact@v4
       with:
-        name: web-build
-        path: build/web/
+        name: ios-ipa
+        path: build/ios/ipa/*.ipa
 
   create-release:
-    needs: [build-android, build-web]  # ⭐ XÓA build-ios
+    needs: [build-ios]  # ⭐ CHỈ CẦN iOS
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
     
@@ -132,7 +60,7 @@ jobs:
         tag_name: v${{ github.run_number }}
         name: Smart Home App v${{ github.run_number }}
         body: |
-          🏠 **Smart Home ESP32-CAM App**
+          🏠 **Smart Home ESP32-CAM App - iOS Only Build**
           
           **Features:**
           - 📱 Face Recognition with ESP32-CAM
@@ -142,11 +70,10 @@ jobs:
           - 📊 Activity Monitoring
           
           **Downloads:**
-          - **Android APK**: For sideloading with Sideloadly
-          - **Web**: Progressive Web App
+          - **iOS IPA**: For sideloading (requires developer account)
           
           **Installation:**
-          1. Download APK for Android
+          1. Download IPA for iOS
           2. Use Sideloadly to install on device
           3. Grant camera and location permissions
           
@@ -154,4 +81,4 @@ jobs:
         draft: false
         prerelease: false
         files: |
-          android-apk/app-arm64-v8a-release.apk
+          ios-ipa/SmartHome.ipa
