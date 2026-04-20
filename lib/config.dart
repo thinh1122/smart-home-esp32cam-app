@@ -1,11 +1,11 @@
 class AppConfig {
-  // HiveMQ MQTT Configuration
-  // ⭐ THAY ĐỔI - Dán thông tin từ HiveMQ Console của bạn
-  static const String hivemqHost = 'cff511c9b4b84e80dba6c5a4-c0fdc63.s1.eu.hivemq.cloud'; // ⚠️ Từ ảnh Console
-  static const int hivemqPort = 8883;
-  static const String hivemqUsername = 'smarthome'; // ⚠️ Từ ảnh của bạn
-  static const String hivemqPassword = 'Smarthome123'; // ⚠️ Từ ảnh của bạn
-  static const bool hivemqUseTLS = true;
+class AppConfig {
+  // ⭐ MQTTX Configuration (Mosquitto Public Broker - đã test ổn định)
+  static const String hivemqHost = 'test.mosquitto.org'; // Mosquitto public broker
+  static const int hivemqPort = 1883;
+  static const String hivemqUsername = ''; // Không cần cho Mosquitto
+  static const String hivemqPassword = ''; // Không cần cho Mosquitto
+  static const bool hivemqUseTLS = false;
 
   // Render Backend API
   static const String renderApiUrl = 'https://your-app.onrender.com/api'; // ⚠️ Thay bằng Render URL

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
+import 'package:wifi_scan/wifi_scan.dart'; // ⭐ THÊM MỚI
 import 'dart:async';
 
 class BLEWiFiProvisioningScreen extends StatefulWidget {
@@ -23,9 +24,12 @@ class _BLEWiFiProvisioningScreenState extends State<BLEWiFiProvisioningScreen> {
   bool _isConnecting = false;
   bool _isConfiguring = false;
   bool _obscurePassword = true;
-  int _currentStep = 0; // 0: Scan, 1: Connect, 2: Config, 3: Done
+  int _currentStep = 0; // 0: Scan, 1: Connect, 2: WiFi List, 3: Verify WiFi, 4: Password, 5: Done
+  bool _isVerifyingWiFi = false; // ⭐ THÊM MỚI - Đang verify WiFi với ESP32
   
   List<ScanResult> _scanResults = [];
+  List<WiFiAccessPoint> _wifiNetworks = []; // ⭐ THAY ĐỔI - Dùng WiFiAccessPoint
+  String? _selectedSSID; // ⭐ THÊM MỚI - WiFi đã chọn
   BluetoothDevice? _connectedDevice;
   BluetoothCharacteristic? _ssidChar;
   BluetoothCharacteristic? _passChar;
@@ -137,11 +141,13 @@ class _BLEWiFiProvisioningScreenState extends State<BLEWiFiProvisioningScreen> {
                   String ip = status.split("|")[1];
                   setState(() {
                     _esp32IP = ip;
-                    _currentStep = 3;
+                    _currentStep = 5; // Step 5 là Done
                   });
-                  _showSuccessDialog(ip);
+                  
+                  // ⭐ THAY ĐỔI - Tự động đóng sau 2s
+                  _showSuccessAndClose(ip);
                 } else if (status == "failed") {
-                  _showError("Kết nối WiFi thất bại!\nKiểm tra SSID và Password");
+                  _showError("WiFi connection failed!\nCheck SSID and Password");
                 }
               });
             }
@@ -156,13 +162,16 @@ class _BLEWiFiProvisioningScreenState extends State<BLEWiFiProvisioningScreen> {
       setState(() {
         _connectedDevice = device;
         _isConnecting = false;
-        _currentStep = 2;
+        _currentStep = 2; // ⭐ THAY ĐỔI - Chuyển đến WiFi list
       });
+      
+      // ⭐ THÊM MỚI - Scan WiFi networks
+      _scanWiFiNetworks();
       
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('✅ Đã kết nối: ${device.platformName}'),
+            content: Text('✅ Connected: ${device.platformName}'),
             backgroundColor: Colors.green,
           ),
         );
@@ -173,8 +182,49 @@ class _BLEWiFiProvisioningScreenState extends State<BLEWiFiProvisioningScreen> {
     }
   }
   
-  // Send WiFi config via BLE
-  Future<void> _sendWiFiConfig() async {
+  // ⭐ THAY ĐỔI - Scan WiFi từ điện thoại (TỐI ƯU)
+  Future<void> _scanWiFiNetworks() async {
+    try {
+      // Kiểm tra quyền WiFi
+      final canScan = await WiFiScan.instance.canGetScannedResults();
+      if (canScan != CanGetScannedResults.yes) {
+        _showError("WiFi scan permission denied");
+        return;
+      }
+      
+      // Scan WiFi networks từ điện thoại
+      await WiFiScan.instance.startScan();
+      await Future.delayed(const Duration(seconds: 3)); // Đợi scan xong
+      
+      final networks = await WiFiScan.instance.getScannedResults();
+      
+      setState(() {
+        // Lọc và sắp xếp theo signal strength
+        _wifiNetworks = networks
+            .where((network) => network.ssid.isNotEmpty) // Bỏ SSID trống
+            .toSet() // Loại bỏ duplicate
+            .toList()
+          ..sort((a, b) => b.level.compareTo(a.level)); // Sắp xếp theo signal
+      });
+      
+    } catch (e) {
+      _showError("WiFi scan failed: $e");
+      setState(() => _wifiNetworks = []);
+    }
+  }
+  
+  // ⭐ THAY ĐỔI - Chọn WiFi và verify với ESP32
+  void _selectWiFi(WiFiAccessPoint network) async {
+    setState(() {
+      _selectedSSID = network.ssid;
+      _ssidController.text = network.ssid;
+      _currentStep = 3; // Chuyển đến verify WiFi
+      _isVerifyingWiFi = true;
+    });
+    
+    // Verify WiFi với ESP32
+    await _verifyWiFiWithESP32(network.ssid);
+  }
     if (_ssidController.text.isEmpty) {
       _showError("Vui lòng nhập SSID");
       return;
@@ -224,6 +274,8 @@ class _BLEWiFiProvisioningScreenState extends State<BLEWiFiProvisioningScreen> {
         _passChar = null;
         _statusChar = null;
         _currentStep = 0;
+        _wifiNetworks.clear(); // ⭐ THÊM MỚI
+        _selectedSSID = null; // ⭐ THÊM MỚI
       });
     }
   }
@@ -241,18 +293,60 @@ class _BLEWiFiProvisioningScreenState extends State<BLEWiFiProvisioningScreen> {
     }
   }
   
+  // ⭐ THAY ĐỔI - Hiển thị thành công và tự động đóng sau 2s
+  void _showSuccessAndClose(String ip) {
+    if (mounted) {
+      // Hiển thị snackbar thành công
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              const Icon(Icons.check_circle, color: Colors.white),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('✅ Connection Successful!', style: TextStyle(fontWeight: FontWeight.bold)),
+                    Text('Device IP: $ip'),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          backgroundColor: Colors.green,
+          duration: const Duration(seconds: 2),
+        ),
+      );
+      
+      // Tự động đóng màn hình sau 2s
+      Future.delayed(const Duration(seconds: 2), () {
+        if (mounted) {
+          Navigator.pop(context, {
+            'success': true,
+            'deviceIP': ip,
+            'deviceName': _connectedDevice?.platformName ?? 'ESP32CAM',
+            'wifiSSID': _selectedSSID ?? _ssidController.text,
+          });
+        }
+      });
+    }
+  }
+  
+  // ⭐ GIỮ LẠI - Dialog cũ cho trường hợp cần thiết
   void _showSuccessDialog(String ip) {
     if (mounted) {
       showDialog(
         context: context,
         barrierDismissible: false,
         builder: (context) => AlertDialog(
-          title: const Text('✅ Thành công!'),
+          title: const Text('✅ Success!'),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text('ESP32-CAM đã kết nối WiFi!'),
+              const Text('ESP32-CAM connected to WiFi!'),
               const SizedBox(height: 12),
               Text('IP: $ip', style: const TextStyle(fontWeight: FontWeight.bold)),
             ],
@@ -271,6 +365,25 @@ class _BLEWiFiProvisioningScreenState extends State<BLEWiFiProvisioningScreen> {
     }
   }
   
+  // ⭐ QR Code Scanner - Sẽ implement thật sau
+  Future<void> _scanQRCode() async {
+    try {
+      // TODO: Implement real QR scanner
+      // Mở màn hình QR scanner thật
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('QR Scanner will be implemented'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+      }
+    } catch (e) {
+      _showError("QR Scanner error: $e");
+    }
+  }
+  
   String _getSignalIcon(int rssi) {
     if (rssi > -60) return '📶';
     if (rssi > -70) return '📡';
@@ -281,14 +394,13 @@ class _BLEWiFiProvisioningScreenState extends State<BLEWiFiProvisioningScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('BLE WiFi Provisioning'),
+        title: const Text('Add Device'),
         backgroundColor: Colors.deepPurple,
         actions: [
           if (_connectedDevice != null)
             IconButton(
               icon: const Icon(Icons.bluetooth_disabled),
               onPressed: _disconnect,
-              tooltip: 'Ngắt kết nối',
             ),
         ],
       ),
@@ -297,16 +409,13 @@ class _BLEWiFiProvisioningScreenState extends State<BLEWiFiProvisioningScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // Step Indicator
-            _buildStepIndicator(),
-            
-            const SizedBox(height: 24),
-            
-            // Content
+            // Content dựa theo step
             if (_currentStep == 0) _buildScanView(),
             if (_currentStep == 1) _buildConnectingView(),
-            if (_currentStep == 2) _buildConfigView(),
-            if (_currentStep == 3) _buildDoneView(),
+            if (_currentStep == 2) _buildWiFiListView(),
+            if (_currentStep == 3) _buildVerifyingView(), // ⭐ THÊM MỚI
+            if (_currentStep == 4) _buildPasswordView(), // ⭐ THAY ĐỔI
+            if (_currentStep == 5) _buildDoneView(), // ⭐ THAY ĐỔI
           ],
         ),
       ),
@@ -374,82 +483,102 @@ class _BLEWiFiProvisioningScreenState extends State<BLEWiFiProvisioningScreen> {
   Widget _buildScanView() {
     return Column(
       children: [
-        Card(
-          color: Colors.blue.shade50,
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              children: [
-                Icon(Icons.bluetooth_searching, size: 48, color: Colors.blue.shade700),
-                const SizedBox(height: 12),
-                const Text(
-                  'Đang quét thiết bị Bluetooth...',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 8),
-                const Text('Đảm bảo ESP32-CAM đã bật và chưa kết nối WiFi'),
-              ],
-            ),
-          ),
-        ),
-        
-        const SizedBox(height: 16),
-        
+        // Scanning status
         if (_isScanning)
-          const Center(child: CircularProgressIndicator())
+          const Card(
+            child: Padding(
+              padding: EdgeInsets.all(16),
+              child: Row(
+                children: [
+                  CircularProgressIndicator(),
+                  SizedBox(width: 16),
+                  Text('Scanning for devices...'),
+                ],
+              ),
+            ),
+          )
         else if (_scanResults.isEmpty)
           Card(
             child: Padding(
               padding: const EdgeInsets.all(16),
               child: Column(
                 children: [
-                  const Text('Không tìm thấy ESP32-CAM'),
+                  const Text('No devices found'),
                   const SizedBox(height: 12),
                   ElevatedButton.icon(
                     onPressed: _startScan,
                     icon: const Icon(Icons.refresh),
-                    label: const Text('Quét lại'),
+                    label: const Text('Scan Again'),
                   ),
                 ],
               ),
             ),
-          )
-        else
+          ),
+        
+        // Device list
+        if (_scanResults.isNotEmpty) ...[
+          const SizedBox(height: 16),
           ..._scanResults.map((result) {
             return Card(
               child: ListTile(
-                leading: Icon(Icons.bluetooth, color: Colors.blue.shade700, size: 32),
-                title: Text(
-                  result.device.platformName,
-                  style: const TextStyle(fontWeight: FontWeight.bold),
-                ),
+                leading: const Icon(Icons.bluetooth, color: Colors.blue, size: 32),
+                title: Text(result.device.platformName),
                 subtitle: Text('${_getSignalIcon(result.rssi)} ${result.rssi} dBm'),
                 trailing: const Icon(Icons.arrow_forward_ios),
                 onTap: () => _connectToDevice(result.device),
               ),
             );
           }).toList(),
+        ],
+        
+        // QR Code option
+        const SizedBox(height: 24),
+        Card(
+          color: Colors.orange.shade50,
+          child: InkWell(
+            onTap: _scanQRCode,
+            child: const Padding(
+              padding: EdgeInsets.all(16),
+              child: Row(
+                children: [
+                  Icon(Icons.qr_code_scanner, color: Colors.orange, size: 32),
+                  SizedBox(width: 16),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('Scan QR Code', style: TextStyle(fontWeight: FontWeight.bold)),
+                        Text('Connect using QR code', style: TextStyle(fontSize: 12)),
+                      ],
+                    ),
+                  ),
+                  Icon(Icons.arrow_forward_ios, size: 16),
+                ],
+              ),
+            ),
+          ),
+        ),
       ],
     );
   }
   
   Widget _buildConnectingView() {
-    return Card(
-      color: Colors.blue.shade50,
-      child: const Padding(
+    return const Card(
+      child: Padding(
         padding: EdgeInsets.all(24),
-        child: Column(
+        child: Row(
           children: [
             CircularProgressIndicator(),
-            SizedBox(height: 16),
-            Text('Đang kết nối BLE...', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+            SizedBox(width: 16),
+            Text('Connecting...'),
           ],
         ),
       ),
     );
   }
   
-  Widget _buildConfigView() {
+  // ⭐ THÊM MỚI - WiFi List View
+  Widget _buildWiFiListView() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -459,14 +588,91 @@ class _BLEWiFiProvisioningScreenState extends State<BLEWiFiProvisioningScreen> {
             padding: const EdgeInsets.all(16),
             child: Row(
               children: [
-                Icon(Icons.check_circle, color: Colors.green.shade700, size: 32),
+                const Icon(Icons.check_circle, color: Colors.green),
+                const SizedBox(width: 12),
+                Text(_connectedDevice != null 
+                  ? 'Connected: ${_connectedDevice?.platformName ?? ''}' 
+                  : 'Connected via QR Code'), // ⭐ THAY ĐỔI - Hỗ trợ QR
+              ],
+            ),
+          ),
+        ),
+        
+        const SizedBox(height: 24),
+        const Text('Select WiFi Network:', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+        const SizedBox(height: 16),
+        
+        if (_wifiNetworks.isEmpty)
+          const Card(
+            child: Padding(
+              padding: EdgeInsets.all(16),
+              child: Row(
+                children: [
+                  CircularProgressIndicator(),
+                  SizedBox(width: 16),
+                  Text('Scanning WiFi networks...'),
+                ],
+              ),
+            ),
+          )
+        else
+          ..._wifiNetworks.map((network) {
+            return Card(
+              child: ListTile(
+                leading: Icon(
+                  _getWiFiIcon(network.level), 
+                  color: _getSignalColor(network.level),
+                ),
+                title: Text(network.ssid),
+                subtitle: Text('${_getSignalStrength(network.level)} • ${_getSecurityType(network.capabilities)}'),
+                trailing: const Icon(Icons.arrow_forward_ios),
+                onTap: () => _selectWiFi(network),
+              ),
+            );
+          }).toList(),
+        
+        const SizedBox(height: 16),
+        
+        // Manual input option - THAY ĐỔI thành "Other..."
+        Card(
+          color: Colors.grey.shade50,
+          child: ListTile(
+            leading: const Icon(Icons.more_horiz, color: Colors.grey),
+            title: const Text('Other...'),
+            subtitle: const Text('Enter WiFi name and password manually'),
+            trailing: const Icon(Icons.arrow_forward_ios),
+            onTap: () {
+              setState(() {
+                _selectedSSID = null; // ⭐ Đánh dấu là manual input
+                _currentStep = 4; // ⭐ THAY ĐỔI - Thẳng đến password (bỏ qua verify)
+                _ssidController.clear();
+                _passwordController.clear();
+              });
+            },
+          ),
+        ),
+      ],
+    );
+  }
+  
+  // ⭐ THÊM MỚI - Verifying WiFi View
+  Widget _buildVerifyingView() {
+    return Column(
+      children: [
+        Card(
+          color: Colors.blue.shade50,
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Row(
+              children: [
+                const Icon(Icons.wifi_find, color: Colors.blue),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text('Đã kết nối BLE', style: TextStyle(fontWeight: FontWeight.bold)),
-                      Text(_connectedDevice?.platformName ?? ''),
+                      Text('Verifying WiFi', style: TextStyle(color: Colors.blue.shade800, fontWeight: FontWeight.bold)),
+                      Text('Checking if ESP32 can see "$_selectedSSID"'),
                     ],
                   ),
                 ),
@@ -476,27 +682,163 @@ class _BLEWiFiProvisioningScreenState extends State<BLEWiFiProvisioningScreen> {
         ),
         
         const SizedBox(height: 24),
-        const Text('Nhập WiFi nhà:', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-        const SizedBox(height: 16),
         
-        TextField(
-          controller: _ssidController,
-          decoration: const InputDecoration(
-            labelText: 'Tên WiFi (SSID)',
-            border: OutlineInputBorder(),
-            prefixIcon: Icon(Icons.wifi),
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              children: [
+                const CircularProgressIndicator(),
+                const SizedBox(height: 16),
+                Text('ESP32 is scanning for "$_selectedSSID"...'),
+                const SizedBox(height: 8),
+                const Text(
+                  'This ensures ESP32 can connect to the selected network',
+                  style: TextStyle(fontSize: 12, color: Colors.grey),
+                  textAlign: TextAlign.center,
+                ),
+              ],
+            ),
           ),
         ),
+      ],
+    );
+  }
+  
+  // ⭐ THAY ĐỔI - Password View (tách riêng từ buildConfigView)
+  Widget _buildPasswordView() {
+    bool isManualInput = _selectedSSID == null && _ssidController.text.isEmpty;
+    
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Hiển thị WiFi đã chọn (nếu có)
+        if (_selectedSSID != null) ...[
+          Card(
+            color: Colors.blue.shade50,
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Row(
+                children: [
+                  const Icon(Icons.wifi, color: Colors.blue),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Text('Selected Network', style: TextStyle(color: Colors.blue.shade800, fontWeight: FontWeight.bold)),
+                            const SizedBox(width: 8),
+                            // ⭐ THÊM MỚI - Hiển thị connection method
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: _connectedDevice != null ? Colors.blue.shade100 : Colors.orange.shade100,
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Text(
+                                _connectedDevice != null ? 'BLE' : 'QR',
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.bold,
+                                  color: _connectedDevice != null ? Colors.blue.shade700 : Colors.orange.shade700,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        Text(_selectedSSID!),
+                      ],
+                    ),
+                  ),
+                  TextButton(
+                    onPressed: () => setState(() => _currentStep = 2),
+                    child: const Text('Change'),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 24),
+          const Text('Enter Password:', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+        ] else ...[
+          // Manual input mode
+          Card(
+            color: Colors.orange.shade50,
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Row(
+                children: [
+                  const Icon(Icons.edit, color: Colors.orange),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Text('Manual Input', style: TextStyle(color: Colors.orange.shade800, fontWeight: FontWeight.bold)),
+                            const SizedBox(width: 8),
+                            // ⭐ THÊM MỚI - Hiển thị connection method
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: _connectedDevice != null ? Colors.blue.shade100 : Colors.orange.shade100,
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Text(
+                                _connectedDevice != null ? 'BLE' : 'QR',
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.bold,
+                                  color: _connectedDevice != null ? Colors.blue.shade700 : Colors.orange.shade700,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const Text('Enter WiFi details manually'),
+                      ],
+                    ),
+                  ),
+                  TextButton(
+                    onPressed: () => setState(() => _currentStep = 2),
+                    child: const Text('Back'),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 24),
+          const Text('WiFi Configuration:', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+        ],
         
         const SizedBox(height: 16),
         
+        // SSID input (chỉ hiện khi manual input)
+        if (_selectedSSID == null) ...[
+          TextField(
+            controller: _ssidController,
+            decoration: const InputDecoration(
+              labelText: 'WiFi Name (SSID)',
+              border: OutlineInputBorder(),
+              prefixIcon: Icon(Icons.wifi),
+              hintText: 'Enter WiFi network name',
+            ),
+          ),
+          const SizedBox(height: 16),
+        ],
+        
+        // Password input (luôn hiện)
         TextField(
           controller: _passwordController,
           obscureText: _obscurePassword,
           decoration: InputDecoration(
-            labelText: 'Mật khẩu',
+            labelText: 'Password',
             border: const OutlineInputBorder(),
             prefixIcon: const Icon(Icons.lock),
+            hintText: _selectedSSID != null ? 'Enter WiFi password' : 'Enter WiFi password',
             suffixIcon: IconButton(
               icon: Icon(_obscurePassword ? Icons.visibility : Icons.visibility_off),
               onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
@@ -506,25 +848,55 @@ class _BLEWiFiProvisioningScreenState extends State<BLEWiFiProvisioningScreen> {
         
         const SizedBox(height: 24),
         
-        ElevatedButton(
-          onPressed: _isConfiguring ? null : _sendWiFiConfig,
-          style: ElevatedButton.styleFrom(
-            backgroundColor: Colors.deepPurple,
-            padding: const EdgeInsets.symmetric(vertical: 16),
+        SizedBox(
+          width: double.infinity,
+          child: ElevatedButton(
+            onPressed: _isConfiguring ? null : _sendWiFiConfig,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.deepPurple,
+              padding: const EdgeInsets.symmetric(vertical: 16),
+            ),
+            child: _isConfiguring
+                ? const Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)),
+                      SizedBox(width: 12),
+                      Text('Connecting...'),
+                    ],
+                  )
+                : const Text('Connect to WiFi'),
           ),
-          child: _isConfiguring
-              ? const Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)),
-                    SizedBox(width: 12),
-                    Text('Đang gửi...'),
-                  ],
-                )
-              : const Text('Gửi cấu hình', style: TextStyle(fontSize: 16)),
         ),
       ],
     );
+  }
+  
+  // ⭐ THAY ĐỔI - Helper functions cho WiFi thật từ điện thoại
+  IconData _getWiFiIcon(int level) {
+    if (level > -50) return Icons.wifi;
+    if (level > -70) return Icons.wifi_2_bar;
+    return Icons.wifi_1_bar;
+  }
+  
+  Color _getSignalColor(int level) {
+    if (level > -50) return Colors.green;
+    if (level > -70) return Colors.orange;
+    return Colors.red;
+  }
+  
+  String _getSignalStrength(int level) {
+    if (level > -50) return 'Strong';
+    if (level > -70) return 'Good';
+    return 'Weak';
+  }
+  
+  String _getSecurityType(String capabilities) {
+    if (capabilities.contains('WPA3')) return 'WPA3';
+    if (capabilities.contains('WPA2')) return 'WPA2';
+    if (capabilities.contains('WPA')) return 'WPA';
+    if (capabilities.contains('WEP')) return 'WEP';
+    return 'Open';
   }
   
   Widget _buildDoneView() {
@@ -534,11 +906,16 @@ class _BLEWiFiProvisioningScreenState extends State<BLEWiFiProvisioningScreen> {
         padding: const EdgeInsets.all(24),
         child: Column(
           children: [
-            Icon(Icons.check_circle, size: 64, color: Colors.green.shade700),
+            const Icon(Icons.check_circle, size: 64, color: Colors.green),
             const SizedBox(height: 16),
-            const Text('Hoàn tất!', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+            const Text('Connection Successful!', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
             const SizedBox(height: 8),
-            Text('IP: $_esp32IP'),
+            Text('Device IP: $_esp32IP'),
+            const SizedBox(height: 16),
+            const Text(
+              'Closing automatically...',
+              style: TextStyle(fontSize: 12, color: Colors.grey),
+            ),
           ],
         ),
       ),

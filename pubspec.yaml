@@ -39,7 +39,8 @@ dependencies:
   path: ^1.9.1
   http: ^0.13.6
   flutter_blue_plus: ^1.32.0  # BLE plugin
-  mqtt_client: ^10.2.0  # ⭐ THÊM MỚI - MQTT client cho HiveMQ
+  mqtt_client: ^10.2.0
+  wifi_scan: ^0.4.1  # ⭐ THÊM MỚI - Scan WiFi từ điện thoại  # ⭐ THÊM MỚI - MQTT client cho HiveMQ
   image_picker: ^1.0.7  # For face enrollment
   permission_handler: ^11.3.0  # For camera/bluetooth permissions
 

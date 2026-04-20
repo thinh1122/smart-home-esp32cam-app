@@ -10,12 +10,11 @@ class MQTTService {
   factory MQTTService() => _instance;
   MQTTService._internal();
 
-  // HiveMQ Configuration
-  // ⭐ THAY ĐỔI - Dán thông tin từ HiveMQ Console của bạn
-  static const String _host = 'cff511c9b4b84e80dba6c5a4-c0fdc63.s1.eu.hivemq.cloud'; // ⚠️ Từ ảnh Console
-  static const int _port = 8883;
-  static const String _username = 'smarthome'; // ⚠️ Từ ảnh
-  static const String _password = 'Smarthome123'; // ⚠️ Từ ảnh
+  // MQTTX Configuration (Mosquitto Public Broker - đã test ổn định)
+  static const String _host = 'test.mosquitto.org';
+  static const int _port = 1883;
+  static const String _username = ''; // Không cần username
+  static const String _password = ''; // Không cần password
 
   MqttServerClient? _client;
   bool _isConnected = false;
@@ -49,23 +48,22 @@ class MQTTService {
       _client!.onDisconnected = _onDisconnected;
       _client!.onConnected = _onConnected;
       _client!.onSubscribed = _onSubscribed;
-      _client!.secure = true;
-      _client!.securityContext = SecurityContext.defaultContext;
+      // ⭐ THAY ĐỔI - Không dùng TLS cho Mosquitto
+      _client!.secure = false;
 
       final connMessage = MqttConnectMessage()
-          .authenticateAs(_username, _password)
+          .startClean()
           .withWillTopic('home/flutter/status')
           .withWillMessage('offline')
-          .startClean()
           .withWillQos(MqttQos.atLeastOnce);
 
       _client!.connectionMessage = connMessage;
 
-      debugPrint('🔌 Connecting to HiveMQ: $_host:$_port');
+      debugPrint('🔌 Connecting to MQTTX (Mosquitto): $_host:$_port');
       await _client!.connect();
 
       if (_client!.connectionStatus!.state == MqttConnectionState.connected) {
-        debugPrint('✅ MQTT connected successfully');
+        debugPrint('✅ MQTTX connected successfully');
         _isConnected = true;
 
         // Subscribe to topics
@@ -79,12 +77,12 @@ class MQTTService {
 
         return true;
       } else {
-        debugPrint('❌ MQTT connection failed: ${_client!.connectionStatus}');
+        debugPrint('❌ MQTTX connection failed: ${_client!.connectionStatus}');
         _isConnected = false;
         return false;
       }
     } catch (e) {
-      debugPrint('❌ MQTT connection error: $e');
+      debugPrint('❌ MQTTX connection error: $e');
       _isConnected = false;
       return false;
     }
@@ -180,12 +178,12 @@ class MQTTService {
   // CONNECTION CALLBACKS
   // ============================================================
   void _onConnected() {
-    debugPrint('✅ MQTT connected callback');
+    debugPrint('✅ MQTTX connected callback');
     _isConnected = true;
   }
 
   void _onDisconnected() {
-    debugPrint('⚠️ MQTT disconnected');
+    debugPrint('⚠️ MQTTX disconnected');
     _isConnected = false;
     
     // Auto reconnect after 5 seconds
@@ -209,7 +207,7 @@ class MQTTService {
       publish('home/flutter/status', {'status': 'offline', 'timestamp': DateTime.now().toIso8601String()});
       _client!.disconnect();
       _isConnected = false;
-      debugPrint('⚠️ MQTT disconnected manually');
+      debugPrint('⚠️ MQTTX disconnected manually');
     }
   }
 

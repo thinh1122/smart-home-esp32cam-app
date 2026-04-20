@@ -3,6 +3,7 @@ import 'home_dashboard.dart';
 import 'living_room_light.dart';
 import 'front_door_cam.dart';
 import 'add_device.dart';
+import 'ble_wifi_provisioning_screen.dart';  // ⭐ THÊM MỚI
 // ⭐ THÊM MỚI - Import MQTT và Render API services
 import 'mqtt_service.dart';
 import 'render_api_service.dart';

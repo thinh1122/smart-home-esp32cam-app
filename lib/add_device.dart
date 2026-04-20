@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'ble_wifi_provisioning_screen.dart';  // ⭐ THÊM MỚI
 
 class AddDeviceScreen extends StatefulWidget {
   const AddDeviceScreen({Key? key}) : super(key: key);
@@ -62,26 +63,54 @@ class _AddDeviceScreenState extends State<AddDeviceScreen> with SingleTickerProv
               ),
             ),
             
-            // Nút "Add Manually" nổi ở dưới cùng cuộn
+            // Nút "Add Manually" và "BLE Provisioning" nổi ở dưới cùng
             Positioned(
               bottom: 100,
               left: 40,
               right: 40,
-              child: Container(
-                padding: const EdgeInsets.symmetric(vertical: 16),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF262635),
-                  borderRadius: BorderRadius.circular(30),
-                  boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.5), blurRadius: 20)],
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    const Icon(Icons.add, color: Colors.white, size: 20),
-                    const SizedBox(width: 8),
-                    const Text('Add Manually', style: TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold)),
-                  ],
-                ),
+              child: Column(
+                children: [
+                  // ⭐ THÊM MỚI - BLE Provisioning Button
+                  GestureDetector(
+                    onTap: () {
+                      Navigator.push(context, MaterialPageRoute(builder: (_) => const BLEWiFiProvisioningScreen()));
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      decoration: BoxDecoration(
+                        color: Colors.blue.shade600,
+                        borderRadius: BorderRadius.circular(30),
+                        boxShadow: [BoxShadow(color: Colors.blue.withOpacity(0.3), blurRadius: 20)],
+                      ),
+                      child: const Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.bluetooth, color: Colors.white, size: 20),
+                          SizedBox(width: 8),
+                          Text('BLE WiFi Provisioning', style: TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold)),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  // Add Manually Button (giữ nguyên)
+                  Container(
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF262635),
+                      borderRadius: BorderRadius.circular(30),
+                      boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.5), blurRadius: 20)],
+                    ),
+                    child: const Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.add, color: Colors.white, size: 20),
+                        SizedBox(width: 8),
+                        Text('Add Manually', style: TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold)),
+                      ],
+                    ),
+                  ),
+                ],
               ),
             )
           ],

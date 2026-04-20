@@ -3,6 +3,7 @@ import 'package:flutter_mjpeg/flutter_mjpeg.dart';
 import 'living_room_light.dart';
 import 'front_door_cam.dart';
 import 'add_device.dart';
+import 'ble_wifi_provisioning_screen.dart';  // ⭐ THÊM MỚI
 
 class HomeDashboard extends StatefulWidget {
   const HomeDashboard({Key? key}) : super(key: key);
@@ -17,6 +18,9 @@ class _HomeDashboardState extends State<HomeDashboard> {
   final Color _accentColor = const Color(0xFFA2B0FF); // Màu tím nhạt chủ đạo
   final Color _textColor = Colors.white;
   final Color _subTextColor = const Color(0xFF8E8E9F);
+  
+  // ⭐ THÊM MỚI - Danh sách thiết bị đã kết nối
+  List<Map<String, dynamic>> _connectedDevices = [];
 
   @override
   Widget build(BuildContext context) {
@@ -41,17 +45,7 @@ class _HomeDashboardState extends State<HomeDashboard> {
           ),
         ),
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () {
-          Navigator.push(context, MaterialPageRoute(builder: (_) => const AddDeviceScreen()));
-        },
-        backgroundColor: _accentColor,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-        ),
-        child: const Icon(Icons.add, color: Colors.black, size: 28),
-      ),
-      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+      // ⭐ XÓA FAB - Không cần nút + nổi nữa
       bottomNavigationBar: _buildBottomNav(),
     );
   }
@@ -228,11 +222,122 @@ class _HomeDashboardState extends State<HomeDashboard> {
   Widget _buildFavoriteDevices() {
     return Column(
       children: [
-        GestureDetector(
-          onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const FrontDoorCamScreen())),
-          child: _buildCameraCard(),
-        ),
+        // ⭐ THAY ĐỔI - Hiển thị thiết bị thật nếu có
+        if (_connectedDevices.isNotEmpty) ...[
+          ..._connectedDevices.map((device) => _buildConnectedDeviceCard(device)).toList(),
+          const SizedBox(height: 16),
+        ],
+        
+        // Placeholder cards (ẩn khi có thiết bị thật)
+        if (_connectedDevices.where((d) => d['type'] == 'camera').isEmpty)
+          _buildAddDeviceCard(
+            title: 'No cameras connected',
+            subtitle: 'Add your first security camera',
+            icon: Icons.videocam_outlined,
+            iconColor: Colors.blue,
+          ),
+        
+        if (_connectedDevices.isNotEmpty && _connectedDevices.where((d) => d['type'] == 'camera').isNotEmpty)
+          const SizedBox(height: 16),
+          
+        if (_connectedDevices.where((d) => d['type'] == 'light').isEmpty)
+          _buildAddDeviceCard(
+            title: 'No lights connected',
+            subtitle: 'Add your first smart light',
+            icon: Icons.lightbulb_outline,
+            iconColor: Colors.amber,
+          ),
       ],
+    );
+  }
+  
+  // ⭐ THÊM MỚI - Card cho thiết bị đã kết nối
+  Widget _buildConnectedDeviceCard(Map<String, dynamic> device) {
+    return Container(
+      height: 180,
+      width: double.infinity,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(32),
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(32),
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            // Camera stream hoặc placeholder
+            Container(
+              color: Colors.black26,
+              child: device['type'] == 'camera' 
+                ? Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const Icon(Icons.videocam, size: 48, color: Colors.white70),
+                        const SizedBox(height: 8),
+                        Text(
+                          device['name'],
+                          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                        ),
+                        Text(
+                          'IP: ${device['ip']}',
+                          style: const TextStyle(color: Colors.white70, fontSize: 12),
+                        ),
+                      ],
+                    ),
+                  )
+                : const Center(child: Icon(Icons.lightbulb, size: 48, color: Colors.white70)),
+            ),
+            
+            // LIVE indicator
+            Container(
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [Colors.black.withOpacity(0.4), Colors.transparent],
+                ),
+              ),
+              child: Align(
+                alignment: Alignment.topLeft,
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      width: 8,
+                      height: 8,
+                      decoration: const BoxDecoration(color: Colors.green, shape: BoxShape.circle),
+                    ),
+                    const SizedBox(width: 8),
+                    const Text('CONNECTED', style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold)),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+  
+  // ⭐ THÊM MỚI - Thêm thiết bị vào dashboard
+  void _addDeviceToDashboard(Map<String, dynamic> deviceData) {
+    setState(() {
+      _connectedDevices.add({
+        'name': deviceData['deviceName'] ?? 'ESP32CAM',
+        'ip': deviceData['deviceIP'],
+        'wifi': deviceData['wifiSSID'],
+        'type': 'camera',
+        'addedAt': DateTime.now(),
+      });
+    });
+    
+    // Hiển thị thông báo
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('✅ Added ${deviceData['deviceName']} to dashboard'),
+        backgroundColor: Colors.green,
+      ),
     );
   }
 
@@ -405,6 +510,103 @@ class _HomeDashboardState extends State<HomeDashboard> {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  // ⭐ THÊM MỚI - Add Device Placeholder Card (có thể tùy chỉnh)
+  Widget _buildAddDeviceCard({
+    required String title,
+    required String subtitle,
+    required IconData icon,
+    required Color iconColor,
+  }) {
+    return Container(
+      height: 180,
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: _cardColor,
+        borderRadius: BorderRadius.circular(32),
+        border: Border.all(color: Colors.white.withOpacity(0.1), width: 1),
+      ),
+      child: Stack(
+        children: [
+          // Nội dung chính
+          Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: iconColor.withOpacity(0.1),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(
+                    icon,
+                    size: 32,
+                    color: iconColor,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  title,
+                  style: TextStyle(
+                    color: _textColor,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  subtitle,
+                  style: TextStyle(
+                    color: _subTextColor,
+                    fontSize: 12,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          // Nút + ở góc trên phải
+          Positioned(
+            top: 16,
+            right: 16,
+            child: GestureDetector(
+              onTap: () async {
+                // ⭐ THAY ĐỔI - Nhận kết quả từ BLE provisioning
+                final result = await Navigator.push<Map<String, dynamic>>(
+                  context, 
+                  MaterialPageRoute(builder: (_) => const BLEWiFiProvisioningScreen())
+                );
+                
+                if (result != null && result['success'] == true) {
+                  // Thành công → Cập nhật dashboard
+                  _addDeviceToDashboard(result);
+                }
+              },
+              child: Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: _accentColor,
+                  shape: BoxShape.circle,
+                  boxShadow: [
+                    BoxShadow(
+                      color: _accentColor.withOpacity(0.3),
+                      blurRadius: 8,
+                      spreadRadius: 2,
+                    ),
+                  ],
+                ),
+                child: const Icon(
+                  Icons.add,
+                  color: Colors.black,
+                  size: 20,
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
