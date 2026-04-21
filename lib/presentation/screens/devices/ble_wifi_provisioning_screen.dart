@@ -412,7 +412,7 @@ class _BLEWiFiProvisioningScreenState extends State<BLEWiFiProvisioningScreen> {
     children: [
       _infoCard(Icons.wifi_find_rounded, 'Verifying WiFi', 'Checking if ESP32 can see "$_selectedSSID"', AppColors.info, showProgress: true),
       const SizedBox(height: 12),
-      TextButton(onPressed: _proceedToPassword, child: const Text('Skip verification', style: TextStyle(color: AppColors.textSecondary))),
+      TextButton(onPressed: () => setState(() => _step = 4), child: const Text('Skip verification', style: TextStyle(color: AppColors.textSecondary))),
     ],
   );
 
