@@ -54,13 +54,30 @@ class _BLEWiFiProvisioningScreenState extends State<BLEWiFiProvisioningScreen> {
   }
 
   Future<void> _checkBluetooth() async {
-    if (await FlutterBluePlus.isSupported == false) { _showError('Device does not support Bluetooth'); return; }
-    final state = await FlutterBluePlus.adapterState.first;
-    if (state != BluetoothAdapterState.on) { _showError('Please enable Bluetooth'); return; }
-    _startScan();
+    if (await FlutterBluePlus.isSupported == false) { 
+      _showError('Device does not support Bluetooth'); 
+      return; 
+    }
+    
+    try {
+      // Chờ tối đa 5 giây để Bluetooth chuyển sang trạng thái ON
+      await FlutterBluePlus.adapterState
+          .where((state) => state == BluetoothAdapterState.on)
+          .first
+          .timeout(const Duration(seconds: 5));
+      _startScan();
+    } catch (e) {
+      _showError('Please enable Bluetooth and grant permissions');
+    }
   }
 
   Future<void> _startScan() async {
+    // Kiểm tra state lần nữa trước khi scan (hỗ trợ nút Scan Again)
+    if (await FlutterBluePlus.adapterState.first != BluetoothAdapterState.on) {
+      _showError('Bluetooth is not ON. Cannot scan.');
+      return;
+    }
+
     setState(() { _isScanning = true; _step = 0; _scanResults.clear(); });
     try {
       await FlutterBluePlus.stopScan();
