@@ -348,12 +348,17 @@ class _BLEWiFiProvisioningScreenState extends State<BLEWiFiProvisioningScreen> {
       const Text('Available Networks', style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
       const SizedBox(height: 12),
       if (_wifiNetworks.isEmpty)
-        _infoCard(Icons.wifi_find_rounded, 'Scanning WiFi...', 'Collecting nearby networks', AppColors.info, showProgress: true)
-      else ...[
+        _infoCard(
+          Icons.wifi_find_rounded, 
+          'Scanning WiFi...', 
+          'If no networks appear (e.g., on iOS), please enter manually below.', 
+          AppColors.warning, 
+          showProgress: true
+        )
+      else
         ..._wifiNetworks.take(12).map(_wifiTile),
-        const SizedBox(height: 10),
-        _manualEntryTile(),
-      ],
+      const SizedBox(height: 12),
+      _manualEntryTile(),
     ],
   );
 
