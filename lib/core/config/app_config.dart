@@ -8,12 +8,12 @@ class AppConfig {
   static const String renderApiKey = 'your_api_key';
 
   // Local Relay Server (Raspberry Pi / PC trên cùng mạng LAN)
-  static const String relayHost = '192.168.110.101';
+  static const String relayHost = '192.168.110.40';
   static const int relayPort = 8080;
   static String get relayBaseUrl => 'http://$relayHost:$relayPort';
 
   // Python AI Server (nhận diện khuôn mặt)
-  static const String aiHost = '192.168.110.101';
+  static const String aiHost = '192.168.110.40';
   static const int aiPort = 5000;
   static String get aiBaseUrl => 'http://$aiHost:$aiPort';
 
