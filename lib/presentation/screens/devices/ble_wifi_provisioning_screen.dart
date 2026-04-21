@@ -4,6 +4,24 @@ import 'package:wifi_scan/wifi_scan.dart';
 import 'dart:async';
 import '../../../core/theme/app_theme.dart';
 
+class MyWiFiNetwork {
+  final String ssid;
+  final int level;
+  final String capabilities;
+  
+  const MyWiFiNetwork({
+    required this.ssid,
+    required this.level,
+    required this.capabilities,
+  });
+
+  @override
+  bool operator ==(Object other) => identical(this, other) || other is MyWiFiNetwork && runtimeType == other.runtimeType && ssid == other.ssid;
+  
+  @override
+  int get hashCode => ssid.hashCode;
+}
+
 class BLEWiFiProvisioningScreen extends StatefulWidget {
   const BLEWiFiProvisioningScreen({super.key});
 
@@ -30,7 +48,7 @@ class _BLEWiFiProvisioningScreenState extends State<BLEWiFiProvisioningScreen> {
   int _step = 0; // 0: Scan, 1: Connecting, 2: WiFi list, 3: Verifying, 4: Password, 5: Done
 
   List<ScanResult> _scanResults = [];
-  List<WiFiAccessPoint> _wifiNetworks = [];
+  List<MyWiFiNetwork> _wifiNetworks = [];
   String? _selectedSSID;
   BluetoothDevice? _connectedDevice;
   BluetoothCharacteristic? _ssidChar, _passChar, _statusChar, _wifiListChar;
@@ -151,8 +169,8 @@ class _BLEWiFiProvisioningScreenState extends State<BLEWiFiProvisioningScreen> {
           final ssids = rawList.split(';').where((s) => s.isNotEmpty).toSet().toList();
           if (mounted) {
             setState(() {
-              _wifiNetworks = ssids.map((ssid) => WiFiAccessPoint(
-                ssid: ssid, bssid: '', capabilities: '', frequency: 0, level: -50, standard: WiFiStandard.unknown
+              _wifiNetworks = ssids.map((ssid) => MyWiFiNetwork(
+                ssid: ssid, level: -50, capabilities: 'WPA2'
               )).toList();
             });
           }
@@ -171,6 +189,7 @@ class _BLEWiFiProvisioningScreenState extends State<BLEWiFiProvisioningScreen> {
         setState(() {
           _wifiNetworks = networks
               .where((n) => n.ssid.isNotEmpty)
+              .map((n) => MyWiFiNetwork(ssid: n.ssid, level: n.level, capabilities: n.capabilities))
               .toSet().toList()
             ..sort((a, b) => b.level.compareTo(a.level));
         });
@@ -181,7 +200,7 @@ class _BLEWiFiProvisioningScreenState extends State<BLEWiFiProvisioningScreen> {
   }
 
   // ── Select WiFi and verify with ESP32 ────────────────────────────────────
-  void _selectWiFi(WiFiAccessPoint network) {
+  void _selectWiFi(MyWiFiNetwork network) {
     setState(() {
       _selectedSSID = network.ssid;
       _ssidCtrl.text = network.ssid;
@@ -383,7 +402,7 @@ class _BLEWiFiProvisioningScreenState extends State<BLEWiFiProvisioningScreen> {
     ],
   );
 
-  Widget _wifiTile(WiFiAccessPoint n) => Container(
+  Widget _wifiTile(MyWiFiNetwork n) => Container(
     margin: const EdgeInsets.only(bottom: 8),
     decoration: BoxDecoration(color: AppColors.card, borderRadius: BorderRadius.circular(16), border: Border.all(color: Colors.white10)),
     child: ListTile(
