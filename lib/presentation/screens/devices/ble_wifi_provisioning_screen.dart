@@ -199,31 +199,14 @@ class _BLEWiFiProvisioningScreenState extends State<BLEWiFiProvisioningScreen> {
     }
   }
 
-  // ── Select WiFi and verify with ESP32 ────────────────────────────────────
+  // ── Select WiFi → go directly to password step ───────────────────────────
   void _selectWiFi(MyWiFiNetwork network) {
     setState(() {
       _selectedSSID = network.ssid;
       _ssidCtrl.text = network.ssid;
-      _step = 3;
+      _step = 4; // Skip verify step — sending "verify:ssid" corrupts SSID on ESP32
     });
-    _verifyWiFiWithESP32(network.ssid);
   }
-
-  // Send SSID to ESP32 to verify it can see this network
-  Future<void> _verifyWiFiWithESP32(String ssid) async {
-    try {
-      if (_ssidChar == null) { _proceedToPassword(); return; }
-      // Write SSID with a "verify:" prefix so ESP32 scans its WiFi list
-      await _ssidChar!.write('verify:$ssid'.codeUnits);
-      // Wait up to 6s for ESP32 to confirm; then proceed to password step regardless
-      await Future.delayed(const Duration(seconds: 5));
-      if (mounted && _step == 3) _proceedToPassword();
-    } catch (_) {
-      if (mounted) _proceedToPassword();
-    }
-  }
-
-  void _proceedToPassword() => setState(() => _step = 4);
 
   // ── Send WiFi config to ESP32 ─────────────────────────────────────────────
   Future<void> _sendWiFiConfig() async {
