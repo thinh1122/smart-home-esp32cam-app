@@ -17,18 +17,20 @@ class AppConfig {
   static const int aiPort = 5000;
   static String get aiBaseUrl => 'http://$aiHost:$aiPort';
 
-  // ESP32-CAM trực tiếp (fallback khi không qua relay)
-  static const String esp32Host = '192.168.110.38';
+  // ESP32-CAM trực tiếp
+  static const String esp32Host = '192.168.110.230';
   static const int esp32StreamPort = 81;
   static String get esp32StreamUrl => 'http://$esp32Host:$esp32StreamPort/stream';
 
-  // Stream URL ưu tiên qua Relay Server
-  static String get streamUrl => '$relayBaseUrl/stream';
-  static String get captureUrl => '$relayBaseUrl/capture';
-  static String get recognizeUrl => '$relayBaseUrl/recognize';
-  static String get enrollUrl => '$relayBaseUrl/enroll';
-  static String get deleteUrl => '$relayBaseUrl/delete';
-  static String get autoCaptureCompareUrl => '$relayBaseUrl/auto_capture_compare';
+  // Stream URL: dùng thẳng ESP32 (không cần relay để test)
+  static String get streamUrl => esp32StreamUrl;
+  static String get captureUrl => 'http://$esp32Host:$esp32StreamPort/capture';
+
+  // AI server vẫn qua relay/AI server
+  static String get recognizeUrl => '$aiBaseUrl/recognize';
+  static String get enrollUrl => '$aiBaseUrl/enroll';
+  static String get deleteUrl => '$aiBaseUrl/delete';
+  static String get autoCaptureCompareUrl => '$aiBaseUrl/auto_capture_compare';
 
   // MQTT Topics
   static const String topicFaceResult = 'home/face_recognition/result';
