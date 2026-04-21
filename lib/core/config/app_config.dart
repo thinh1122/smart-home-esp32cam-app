@@ -1,6 +1,6 @@
 class AppConfig {
-  // MQTT Broker (Mosquitto Public - no auth required)
-  static const String mqttHost = 'test.mosquitto.org';
+  // MQTT Broker (HiveMQ Public)
+  static const String mqttHost = 'broker.hivemq.com';
   static const int mqttPort = 1883;
 
   // Render Backend API
