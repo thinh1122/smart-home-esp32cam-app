@@ -20,6 +20,7 @@ class _BLEWiFiProvisioningScreenState extends State<BLEWiFiProvisioningScreen> {
   static const _ssidCharUUID  = 'beb5483e-36e1-4688-b7f5-ea07361b26a8';
   static const _passCharUUID  = '1c95d5e3-d8f7-413a-bf3d-7a2e5d7be87e';
   static const _statusCharUUID = 'd8de624e-140f-4a22-8594-e2216b84a5f2';
+  static const _wifiListCharUUID = '2b8c9e50-7182-4f32-8414-b49911e0eb7e';
 
   // State
   bool _isScanning = false;
@@ -32,7 +33,7 @@ class _BLEWiFiProvisioningScreenState extends State<BLEWiFiProvisioningScreen> {
   List<WiFiAccessPoint> _wifiNetworks = [];
   String? _selectedSSID;
   BluetoothDevice? _connectedDevice;
-  BluetoothCharacteristic? _ssidChar, _passChar, _statusChar;
+  BluetoothCharacteristic? _ssidChar, _passChar, _statusChar, _wifiListChar;
   String? _esp32IP;
 
   StreamSubscription? _scanSub, _statusSub;
@@ -110,6 +111,7 @@ class _BLEWiFiProvisioningScreenState extends State<BLEWiFiProvisioningScreen> {
           final uuid = char.uuid.toString().toLowerCase();
           if (uuid == _ssidCharUUID.toLowerCase()) _ssidChar = char;
           if (uuid == _passCharUUID.toLowerCase()) _passChar = char;
+          if (uuid == _wifiListCharUUID.toLowerCase()) _wifiListChar = char;
           if (uuid == _statusCharUUID.toLowerCase()) {
             _statusChar = char;
             await char.setNotifyValue(true);
@@ -141,8 +143,27 @@ class _BLEWiFiProvisioningScreenState extends State<BLEWiFiProvisioningScreen> {
 
   Future<void> _scanWiFiNetworks() async {
     try {
+      // 1. Dùng danh sách WiFi do ESP32 tự quét và gửi qua BLE (Tương thích 100% Android + iOS)
+      if (_wifiListChar != null) {
+        final value = await _wifiListChar!.read();
+        final rawList = String.fromCharCodes(value);
+        if (rawList.isNotEmpty) {
+          final ssids = rawList.split(';').where((s) => s.isNotEmpty).toSet().toList();
+          if (mounted) {
+            setState(() {
+              _wifiNetworks = ssids.map((ssid) => WiFiAccessPoint(
+                ssid: ssid, bssid: '', capabilities: '', frequency: 0, level: -50, standard: WiFiStandard.unknown
+              )).toList();
+            });
+          }
+          return; // Nếu đọc được thì dừng, không cần quét bằng điện thoại nữa
+        }
+      }
+
+      // 2. Fallback: Nếu ESP32 chưa có FW mới, dùng thư viện điện thoại quét
       final canScan = await WiFiScan.instance.canGetScannedResults();
-      if (canScan != CanGetScannedResults.yes) { _showError('WiFi scan permission denied'); return; }
+      if (canScan != CanGetScannedResults.yes) return;
+      
       await WiFiScan.instance.startScan();
       await Future.delayed(const Duration(seconds: 3));
       final networks = await WiFiScan.instance.getScannedResults();
