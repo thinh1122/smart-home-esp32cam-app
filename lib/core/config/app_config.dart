@@ -22,8 +22,8 @@ class AppConfig {
   static const int esp32StreamPort = 81;
   static String get esp32StreamUrl => 'http://$esp32Host:$esp32StreamPort/stream';
 
-  // Stream URL: dùng thẳng ESP32 (không cần relay để test)
-  static String get streamUrl => esp32StreamUrl;
+  // Stream URL: Dùng Relay qua Python để xem được nhiều máy cùng lúc
+  static String get streamUrl => '$aiBaseUrl/stream';
   static String get captureUrl => 'http://$esp32Host:$esp32StreamPort/capture';
 
   // AI server vẫn qua relay/AI server
