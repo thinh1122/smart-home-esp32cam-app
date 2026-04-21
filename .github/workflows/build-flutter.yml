@@ -72,38 +72,8 @@ jobs:
         name: ios-ipa
         path: build/ios/ipa/*.ipa
 
-  build-web:
-    runs-on: ubuntu-latest
-    
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-      
-    - name: Setup Flutter
-      uses: subosito/flutter-action@v2
-      with:
-        flutter-version: '3.24.3'
-        channel: 'stable'
-        
-    - name: Get dependencies
-      run: flutter pub get
-      
-    - name: Build Web
-      run: flutter build web --release
-      
-    - name: Archive Web Build
-      run: |
-        cd build/web
-        zip -r ../../web-build.zip .
-        
-    - name: Upload Web artifacts
-      uses: actions/upload-artifact@v4
-      with:
-        name: web-build
-        path: web-build.zip
-
   create-release:
-    needs: [build-android, build-ios, build-web]
+    needs: [build-android, build-ios]
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
     
@@ -132,7 +102,6 @@ jobs:
           **Downloads:**
           - **Android APK**: Direct install on Android devices
           - **iOS IPA**: For sideloading (requires developer account)
-          - **Web Build**: Deploy to web server
           
           **Installation:**
           1. Download APK for Android or IPA for iOS
@@ -145,4 +114,3 @@ jobs:
         files: |
           android-apk/*.apk
           ios-ipa/SmartHome.ipa
-          web-build/web-build.zip

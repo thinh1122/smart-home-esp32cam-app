@@ -1,0 +1,43 @@
+class AppConfig {
+  // MQTT Broker (Mosquitto Public - no auth required)
+  static const String mqttHost = 'test.mosquitto.org';
+  static const int mqttPort = 1883;
+
+  // Render Backend API
+  static const String renderApiUrl = 'https://your-app.onrender.com/api';
+  static const String renderApiKey = 'your_api_key';
+
+  // Local Relay Server (Raspberry Pi / PC trên cùng mạng LAN)
+  static const String relayHost = '192.168.110.101';
+  static const int relayPort = 8080;
+  static String get relayBaseUrl => 'http://$relayHost:$relayPort';
+
+  // Python AI Server (nhận diện khuôn mặt)
+  static const String aiHost = '192.168.110.101';
+  static const int aiPort = 5000;
+  static String get aiBaseUrl => 'http://$aiHost:$aiPort';
+
+  // ESP32-CAM trực tiếp (fallback khi không qua relay)
+  static const String esp32Host = '192.168.110.38';
+  static const int esp32StreamPort = 81;
+  static String get esp32StreamUrl => 'http://$esp32Host:$esp32StreamPort/stream';
+
+  // Stream URL ưu tiên qua Relay Server
+  static String get streamUrl => '$relayBaseUrl/stream';
+  static String get captureUrl => '$relayBaseUrl/capture';
+  static String get recognizeUrl => '$relayBaseUrl/recognize';
+  static String get enrollUrl => '$relayBaseUrl/enroll';
+  static String get deleteUrl => '$relayBaseUrl/delete';
+  static String get autoCaptureCompareUrl => '$relayBaseUrl/auto_capture_compare';
+
+  // MQTT Topics
+  static const String topicFaceResult = 'home/face_recognition/result';
+  static const String topicFaceAlert = 'home/face_recognition/alert';
+  static const String topicDeviceState = 'home/devices/+/+/state';
+  static const String topicLogs = 'home/logs/activity';
+
+  // App settings
+  static const int recognitionIntervalSeconds = 3;
+  static const int faceStableThresholdSeconds = 2;
+  static const int maxLocalLogs = 100;
+}
