@@ -16,6 +16,13 @@ class _HomeDashboardState extends State<HomeDashboard> {
   bool _bedroomLight = false;
   bool _kitchenLight = true;
   bool _doorLocked = true;
+  Key _streamKey = UniqueKey();
+
+  void _reconnectStream() {
+    setState(() {
+      _streamKey = UniqueKey();
+    });
+  }
 
   String get _greeting {
     final h = DateTime.now().hour;
@@ -158,29 +165,44 @@ class _HomeDashboardState extends State<HomeDashboard> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               const Text('Front Door', style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w600)),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                decoration: BoxDecoration(
-                  color: AppColors.error.withOpacity(0.15),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: AppColors.error.withOpacity(0.4)),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Container(
-                      width: 6,
-                      height: 6,
-                      decoration: const BoxDecoration(color: AppColors.error, shape: BoxShape.circle),
+              Row(
+                children: [
+                  GestureDetector(
+                    onTap: _reconnectStream,
+                    child: Container(
+                      padding: const EdgeInsets.all(4),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.05),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: const Icon(Icons.refresh_rounded, color: Colors.white38, size: 16),
                     ),
-                    const SizedBox(width: 6),
-                    const Text('LIVE', style: TextStyle(color: AppColors.error, fontSize: 10, fontWeight: FontWeight.bold, letterSpacing: 1)),
-                  ],
-                ),
+                  ),
+                  const SizedBox(width: 8),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: AppColors.error.withOpacity(0.15),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: AppColors.error.withOpacity(0.4)),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Container(
+                          width: 6,
+                          height: 6,
+                          decoration: const BoxDecoration(color: AppColors.error, shape: BoxShape.circle),
+                        ),
+                        const SizedBox(width: 6),
+                        const Text('LIVE', style: TextStyle(color: AppColors.error, fontSize: 10, fontWeight: FontWeight.bold, letterSpacing: 1)),
+                      ],
+                    ),
+                  ),
+                ],
               ),
             ],
           ),
@@ -194,6 +216,7 @@ class _HomeDashboardState extends State<HomeDashboard> {
                 fit: StackFit.expand,
                 children: [
                   Mjpeg(
+                    key: _streamKey,
                     isLive: true,
                     stream: AppConfig.streamUrl,
                     error: (ctx, err, stack) => Container(

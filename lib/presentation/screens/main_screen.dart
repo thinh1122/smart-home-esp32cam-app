@@ -3,6 +3,7 @@ import '../../core/theme/app_theme.dart';
 import 'dashboard/home_dashboard.dart';
 import 'camera/front_door_cam_screen.dart';
 import 'lights/living_room_light_screen.dart';
+import 'members/members_screen.dart';
 import 'devices/add_device_screen.dart';
 
 class MainScreen extends StatefulWidget {
@@ -18,6 +19,7 @@ class _MainScreenState extends State<MainScreen> {
   static const _tabs = [
     _TabItem(icon: Icons.home_rounded, label: 'Home'),
     _TabItem(icon: Icons.videocam_rounded, label: 'Camera'),
+    _TabItem(icon: Icons.people_alt_rounded, label: 'Members'),
     _TabItem(icon: Icons.lightbulb_rounded, label: 'Lights'),
     _TabItem(icon: Icons.devices_rounded, label: 'Devices'),
   ];
@@ -26,6 +28,7 @@ class _MainScreenState extends State<MainScreen> {
   final _pages = const [
     HomeDashboard(),
     FrontDoorCamScreen(),
+    MembersScreen(),
     LivingRoomLightScreen(),
     AddDeviceScreen(),
   ];

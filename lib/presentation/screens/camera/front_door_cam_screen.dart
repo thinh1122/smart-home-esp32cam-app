@@ -7,8 +7,8 @@ import 'package:http/http.dart' as http;
 import '../../../core/config/app_config.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/services/database_helper.dart';
-import '../../../data/models/member_model.dart';
 import '../../../data/models/log_model.dart';
+import '../members/members_screen.dart';
 
 class FrontDoorCamScreen extends StatefulWidget {
   const FrontDoorCamScreen({super.key});
@@ -18,7 +18,6 @@ class FrontDoorCamScreen extends StatefulWidget {
 }
 
 class _FrontDoorCamScreenState extends State<FrontDoorCamScreen> {
-  List<Member> _members = [];
   List<LogEntry> _logs = [];
 
   // Stream state
@@ -226,22 +225,15 @@ class _FrontDoorCamScreenState extends State<FrontDoorCamScreen> {
 
   // ── Data loading ──────────────────────────────────────────────────────────
   Future<void> _loadData() async {
-    final members = await DatabaseHelper.instance.getAllMembers();
     final logs = await DatabaseHelper.instance.getLogs(limit: 30);
     if (!mounted) return;
     setState(() {
-      _members = members.map(Member.fromMap).toList();
       _logs = logs.map(LogEntry.fromMap).toList();
     });
-    if (_members.isEmpty) _seedData();
-  }
-
-  Future<void> _seedData() async {
-    await DatabaseHelper.instance.insertMember({'id': '0', 'name': 'Nguyễn Phùng Thịnh', 'role': 'Admin', 'avatar': 'https://i.pravatar.cc/150?img=11'});
-    await DatabaseHelper.instance.insertMember({'id': '1', 'name': 'Mẹ', 'role': 'Thành viên', 'avatar': 'https://i.pravatar.cc/150?img=43'});
-    await DatabaseHelper.instance.insertMember({'id': '2', 'name': 'Bố', 'role': 'Thành viên', 'avatar': 'https://i.pravatar.cc/150?img=52'});
-    await DatabaseHelper.instance.addLog('Hệ thống khởi động', 'Smart Home ESP32-CAM online');
-    _loadData();
+    if (_logs.isEmpty) {
+      await DatabaseHelper.instance.addLog('Hệ thống khởi động', 'Smart Home ESP32-CAM online');
+      _loadData();
+    }
   }
 
   // ── Build ─────────────────────────────────────────────────────────────────
@@ -508,9 +500,9 @@ class _FrontDoorCamScreenState extends State<FrontDoorCamScreen> {
       padding: const EdgeInsets.symmetric(horizontal: 20),
       child: Row(
         children: [
-          Expanded(child: _actionBtn('Members', Icons.people_alt_rounded, AppColors.accentLight, isPrimary: true, onTap: () => _showMembersSheet())),
+          Expanded(child: _actionBtn('Members', Icons.people_alt_rounded, AppColors.accentLight, isPrimary: true, onTap: _goToMembers)),
           const SizedBox(width: 12),
-          Expanded(child: _actionBtn('Snapshot', Icons.camera_alt_rounded, AppColors.info)),
+          Expanded(child: _actionBtn('Snapshot', Icons.camera_alt_rounded, AppColors.info, onTap: _takeSnapshot)),
           const SizedBox(width: 12),
           Expanded(child: _actionBtn('Alarm', Icons.campaign_rounded, AppColors.warning)),
         ],
@@ -615,280 +607,46 @@ class _FrontDoorCamScreenState extends State<FrontDoorCamScreen> {
     );
   }
 
-  // ── Members bottom sheet ───────────────────────────────────────────────────
-  void _showMembersSheet() {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.transparent,
-      isScrollControlled: true,
-      builder: (_) => DraggableScrollableSheet(
-        initialChildSize: 0.65,
-        minChildSize: 0.4,
-        maxChildSize: 0.9,
-        builder: (ctx, scrollCtrl) => Container(
-          decoration: const BoxDecoration(
-            color: AppColors.card,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
-          ),
-          child: Column(
-            children: [
-              const SizedBox(height: 12),
-              Container(width: 36, height: 4, decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(2))),
-              const SizedBox(height: 20),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Text('Registered Faces', style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
-                    GestureDetector(
-                      onTap: () { Navigator.pop(context); _showAddMemberDialog(); },
-                      child: Container(
-                        padding: const EdgeInsets.all(8),
-                        decoration: const BoxDecoration(color: AppColors.accentDim, shape: BoxShape.circle),
-                        child: const Icon(Icons.add, color: AppColors.accentLight, size: 20),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 16),
-              Expanded(
-                child: ListView.builder(
-                  controller: scrollCtrl,
-                  padding: const EdgeInsets.symmetric(horizontal: 20),
-                  itemCount: _members.length,
-                  itemBuilder: (ctx, i) => _buildMemberTile(_members[i]),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
+  // ── Navigate to Members tab ───────────────────────────────────────────────
+  void _goToMembers() {
+    Navigator.push(context, MaterialPageRoute(builder: (_) => const MembersScreen()));
   }
 
-  Widget _buildMemberTile(Member member) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Row(
-        children: [
-          CircleAvatar(
-            radius: 26,
-            backgroundImage: member.imageProvider,
-          ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(member.name, style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w600)),
-                const SizedBox(height: 2),
-                Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                      decoration: BoxDecoration(color: AppColors.accentDim, borderRadius: BorderRadius.circular(8)),
-                      child: Text('ID: ${member.id}', style: const TextStyle(color: AppColors.accentLight, fontSize: 10, fontWeight: FontWeight.bold)),
-                    ),
-                    const SizedBox(width: 8),
-                    Text(member.role, style: const TextStyle(color: AppColors.textSecondary, fontSize: 11)),
-                  ],
-                ),
-              ],
-            ),
-          ),
-          GestureDetector(
-            onTap: () => _deleteMember(member),
-            child: Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(color: AppColors.error.withOpacity(0.1), borderRadius: BorderRadius.circular(10)),
-              child: const Icon(Icons.delete_outline_rounded, color: AppColors.error, size: 18),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Future<void> _deleteMember(Member member) async {
+  // ── Snapshot ──────────────────────────────────────────────────────────────
+  Future<void> _takeSnapshot() async {
     try {
-      await http.post(
-        Uri.parse(AppConfig.deleteUrl),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({'id': member.id, 'name': member.name}),
-      ).timeout(const Duration(seconds: 5));
-    } catch (_) {}
-    await DatabaseHelper.instance.deleteMember(member.id);
-    await DatabaseHelper.instance.addLog('Xoá thành viên', 'Đã gỡ quyền: ${member.name}');
-    if (mounted) Navigator.pop(context);
-    await _loadData();
-    if (mounted) _showMembersSheet();
-  }
-
-  // ── Add member dialog ─────────────────────────────────────────────────────
-  void _showAddMemberDialog() {
-    final nameCtrl = TextEditingController();
-    final idCtrl = TextEditingController(text: _members.length.toString());
-
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: AppColors.card,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-        title: const Text('Add Face ID', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            _textField(idCtrl, 'ID', Icons.tag_rounded),
-            const SizedBox(height: 12),
-            _textField(nameCtrl, 'Name', Icons.person_rounded),
-          ],
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel', style: TextStyle(color: AppColors.textSecondary))),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: AppColors.accent, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
-            onPressed: () {
-              final name = nameCtrl.text.trim();
-              final id = idCtrl.text.trim();
-              if (name.isEmpty || id.isEmpty) return;
-              Navigator.pop(ctx);
-              _startFaceCapture(id, name);
-            },
-            child: const Text('Next', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _textField(TextEditingController ctrl, String label, IconData icon) => TextField(
-    controller: ctrl,
-    style: const TextStyle(color: Colors.white),
-    decoration: InputDecoration(
-      labelText: label,
-      labelStyle: const TextStyle(color: AppColors.textSecondary),
-      prefixIcon: Icon(icon, color: AppColors.textSecondary, size: 18),
-      enabledBorder: OutlineInputBorder(borderSide: const BorderSide(color: Colors.white24), borderRadius: BorderRadius.circular(14)),
-      focusedBorder: OutlineInputBorder(borderSide: const BorderSide(color: AppColors.accentLight), borderRadius: BorderRadius.circular(14)),
-      filled: true,
-      fillColor: AppColors.surface,
-    ),
-  );
-
-  // ── Face capture wizard ───────────────────────────────────────────────────
-  void _startFaceCapture(String id, String name) {
-    setState(() => _isStreamActive = false);
-
-    Future.delayed(const Duration(milliseconds: 400), () {
-      if (!mounted) return;
-      int step = 0;
-      String? avatarBase64;
-      bool capturing = false;
-
-      final steps = [
-        'STEP 1/3 — Look straight at camera',
-        'STEP 2/3 — Turn slightly to the RIGHT',
-        'STEP 3/3 — Turn slightly to the LEFT',
-        'Done! Tap SAVE to finish',
-      ];
-
-      showDialog(
-        context: context,
-        barrierDismissible: false,
-        builder: (_) => StatefulBuilder(
-          builder: (ctx, setDs) => AlertDialog(
-            backgroundColor: AppColors.card,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-            contentPadding: const EdgeInsets.all(16),
-            title: Text('Register: $name', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 17), textAlign: TextAlign.center),
-            content: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(steps[step], style: TextStyle(color: step == 3 ? AppColors.success : AppColors.info, fontSize: 14, fontWeight: FontWeight.w600), textAlign: TextAlign.center),
-                  const SizedBox(height: 16),
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(18),
-                    child: SizedBox(
-                      height: 200, width: double.infinity,
-                      child: Stack(fit: StackFit.expand, children: [
-                        Mjpeg(isLive: true, stream: AppConfig.streamUrl,
-                          error: (c, e, s) => const Center(child: Text('Camera offline', style: TextStyle(color: Colors.white54)))),
-                        if (step == 3)
-                          Container(color: Colors.black54, child: const Center(child: Icon(Icons.check_circle_rounded, color: AppColors.success, size: 64))),
-                      ]),
+      final res = await http.get(Uri.parse(AppConfig.captureUrl)).timeout(const Duration(seconds: 5));
+      if (res.statusCode == 200) {
+        final b64 = base64Encode(res.bodyBytes);
+        await DatabaseHelper.instance.addLog('Snapshot', 'Chụp ảnh thủ công');
+        if (mounted) _showBanner('Snapshot đã lưu', AppColors.success);
+        // Show preview
+        if (mounted) {
+          showDialog(
+            context: context,
+            builder: (_) => Dialog(
+              backgroundColor: AppColors.card,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(14),
+                      child: Image.memory(res.bodyBytes, fit: BoxFit.contain),
                     ),
-                  ),
-                  const SizedBox(height: 20),
-                  if (capturing)
-                    const Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                      SizedBox(width: 18, height: 18, child: CircularProgressIndicator(color: AppColors.info, strokeWidth: 2)),
-                      SizedBox(width: 12),
-                      Text('Capturing...', style: TextStyle(color: AppColors.info)),
-                    ])
-                  else if (step < 3)
-                    SizedBox(
-                      width: double.infinity,
-                      child: ElevatedButton.icon(
-                        style: ElevatedButton.styleFrom(backgroundColor: Colors.white, padding: const EdgeInsets.symmetric(vertical: 14), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16))),
-                        onPressed: () async {
-                          setDs(() => capturing = true);
-                          try {
-                            final r = await http.get(Uri.parse(AppConfig.captureUrl)).timeout(const Duration(seconds: 5));
-                            if (r.statusCode == 200) {
-                              final b64 = base64Encode(r.bodyBytes);
-                              if (step == 0) avatarBase64 = b64;
-                              await http.post(Uri.parse(AppConfig.enrollUrl),
-                                headers: {'Content-Type': 'application/json'},
-                                body: jsonEncode({'id': id, 'name': name, 'image_base64': b64, 'pose': step + 1}),
-                              ).timeout(const Duration(seconds: 7));
-                              setDs(() { step++; capturing = false; });
-                            } else { setDs(() => capturing = false); }
-                          } catch (_) { setDs(() => capturing = false); }
-                        },
-                        icon: const Icon(Icons.camera_alt_rounded, color: Colors.black, size: 22),
-                        label: Text('CAPTURE ${step + 1}/3', style: const TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 16)),
-                      ),
-                    )
-                  else
-                    SizedBox(
-                      width: double.infinity,
-                      child: ElevatedButton.icon(
-                        style: ElevatedButton.styleFrom(backgroundColor: AppColors.success, padding: const EdgeInsets.symmetric(vertical: 14), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16))),
-                        onPressed: () => Navigator.pop(ctx, avatarBase64),
-                        icon: const Icon(Icons.save_rounded, color: Colors.black, size: 22),
-                        label: const Text('SAVE', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 16)),
-                      ),
-                    ),
-                  const SizedBox(height: 4),
-                  TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel', style: TextStyle(color: AppColors.textSecondary))),
-                ],
+                    const SizedBox(height: 12),
+                    TextButton(onPressed: () => Navigator.pop(context), child: const Text('Đóng', style: TextStyle(color: AppColors.accentLight))),
+                  ],
+                ),
               ),
             ),
-          ),
-        ),
-      ).then((result) {
-        if (!mounted) return;
-        setState(() => _isStreamActive = true);
-        if (result is String) {
-          final exists = _members.any((m) => m.id == id);
-          if (!exists) {
-            DatabaseHelper.instance.insertMember({'id': id, 'name': name, 'role': 'Face ID', 'avatar': result})
-              .then((_) {
-                DatabaseHelper.instance.addLog('Đăng ký khuôn mặt', '$name (ID: $id)');
-                _loadData();
-              });
-          }
-          _showBanner('Đã đăng ký khuôn mặt: $name', AppColors.success);
+          );
         }
-      });
-    });
+      }
+    } catch (_) {
+      if (mounted) _showBanner('Không thể chụp ảnh', AppColors.error);
+    }
   }
 }

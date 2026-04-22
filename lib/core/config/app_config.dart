@@ -26,10 +26,11 @@ class AppConfig {
   static String get streamUrl => '$aiBaseUrl/stream';
   static String get captureUrl => 'http://$esp32Host:$esp32StreamPort/capture';
 
-  // AI server vẫn qua relay/AI server
+  // AI server endpoints
   static String get recognizeUrl => '$aiBaseUrl/recognize';
   static String get enrollUrl => '$aiBaseUrl/enroll';
   static String get deleteUrl => '$aiBaseUrl/delete';
+  static String get membersUrl => '$aiBaseUrl/members';
   static String get autoCaptureCompareUrl => '$aiBaseUrl/auto_capture_compare';
 
   // MQTT Topics
