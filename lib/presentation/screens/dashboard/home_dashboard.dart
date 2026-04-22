@@ -165,6 +165,7 @@ class _HomeDashboardState extends State<HomeDashboard> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               const Text('Front Door', style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w600)),
@@ -227,7 +228,7 @@ class _HomeDashboardState extends State<HomeDashboard> {
                           const Icon(Icons.videocam_off_rounded, color: Colors.white30, size: 40),
                           const SizedBox(height: 8),
                           Text(
-                            'Camera offline\n${AppConfig.relayBaseUrl}',
+                            'Camera offline\n${AppConfig.streamUrl}',
                             textAlign: TextAlign.center,
                             style: const TextStyle(color: Colors.white30, fontSize: 11),
                           ),
@@ -235,7 +236,6 @@ class _HomeDashboardState extends State<HomeDashboard> {
                       ),
                     ),
                   ),
-                  // Gradient overlay
                   Positioned(
                     bottom: 0, left: 0, right: 0,
                     child: Container(
@@ -249,8 +249,10 @@ class _HomeDashboardState extends State<HomeDashboard> {
                       ),
                     ),
                   ),
-                  // Corner marks
-                  ..._buildCornerMarks(),
+                  Positioned(top: 12, left: 12, child: _cornerMark(top: true, left: true)),
+                  Positioned(top: 12, right: 12, child: _cornerMark(top: true, left: false)),
+                  Positioned(bottom: 12, left: 12, child: _cornerMark(top: false, left: true)),
+                  Positioned(bottom: 12, right: 12, child: _cornerMark(top: false, left: false)),
                 ],
               ),
             ),
@@ -258,15 +260,6 @@ class _HomeDashboardState extends State<HomeDashboard> {
         ],
       ),
     );
-  }
-
-  List<Widget> _buildCornerMarks() {
-    return [
-      Positioned(top: 12, left: 12, child: _cornerMark(top: true, left: true)),
-      Positioned(top: 12, right: 12, child: _cornerMark(top: true, left: false)),
-      Positioned(bottom: 12, left: 12, child: _cornerMark(top: false, left: true)),
-      Positioned(bottom: 12, right: 12, child: _cornerMark(top: false, left: false)),
-    ];
   }
 
   Widget _cornerMark({required bool top, required bool left}) => Container(
