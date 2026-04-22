@@ -3,6 +3,7 @@ import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:wifi_scan/wifi_scan.dart';
 import 'dart:async';
 import '../../../core/theme/app_theme.dart';
+import '../../../core/services/device_config_service.dart';
 
 class MyWiFiNetwork {
   final String ssid;
@@ -228,6 +229,8 @@ class _BLEWiFiProvisioningScreenState extends State<BLEWiFiProvisioningScreen> {
 
   void _onConnectedSuccessfully(String ip) {
     if (!mounted) return;
+    // Lưu IP mới vào persistent storage — AppConfig.streamUrl sẽ tự dùng IP này
+    DeviceConfigService.instance.saveEsp32Ip(ip);
     _showSnack('ESP32 connected! IP: $ip', AppColors.success);
     Future.delayed(const Duration(seconds: 2), () {
       if (mounted) {

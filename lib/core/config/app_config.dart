@@ -1,3 +1,5 @@
+import '../services/device_config_service.dart';
+
 class AppConfig {
   // MQTT Broker (HiveMQ Public)
   static const String mqttHost = 'broker.hivemq.com';
@@ -17,14 +19,10 @@ class AppConfig {
   static const int aiPort = 5000;
   static String get aiBaseUrl => 'http://$aiHost:$aiPort';
 
-  // ESP32-CAM trực tiếp
-  static const String esp32Host = '192.168.110.230';
-  static const int esp32StreamPort = 81;
-  static String get esp32StreamUrl => 'http://$esp32Host:$esp32StreamPort/stream';
-
-  // Stream URL: Dùng Relay qua Python để xem được nhiều máy cùng lúc
-  static String get streamUrl => '$aiBaseUrl/stream';
-  static String get captureUrl => 'http://$esp32Host:$esp32StreamPort/capture';
+  // ESP32-CAM — IP động, tự động cập nhật sau BLE provisioning
+  // DeviceConfigService.instance.init() phải được gọi trong main() trước runApp()
+  static String get streamUrl => DeviceConfigService.instance.streamUrl;
+  static String get captureUrl => DeviceConfigService.instance.captureUrl;
 
   // AI server endpoints
   static String get recognizeUrl => '$aiBaseUrl/recognize';

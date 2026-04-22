@@ -42,6 +42,7 @@ dependencies:
   wifi_scan: ^0.4.1  # ⭐ THÊM MỚI - Scan WiFi từ điện thoại  # ⭐ THÊM MỚI - MQTT client cho HiveMQ
   image_picker: ^1.0.7  # For face enrollment
   permission_handler: ^11.3.0  # For camera/bluetooth permissions
+  shared_preferences: ^2.3.2  # Lưu ESP32 IP động
 
 dev_dependencies:
   flutter_test:

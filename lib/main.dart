@@ -2,10 +2,14 @@ import 'package:flutter/material.dart';
 import 'core/theme/app_theme.dart';
 import 'core/services/mqtt_service.dart';
 import 'core/services/render_api_service.dart';
+import 'core/services/device_config_service.dart';
 import 'presentation/screens/main_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Load saved ESP32 IP trước khi app render
+  await DeviceConfigService.instance.init();
 
   // Connect MQTT in background — don't block app startup
   MQTTService().connect().then((ok) => debugPrint(ok ? 'MQTT connected' : 'MQTT offline'));
