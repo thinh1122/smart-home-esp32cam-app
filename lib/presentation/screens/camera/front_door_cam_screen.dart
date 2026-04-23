@@ -1,9 +1,7 @@
 import 'package:flutter/material.dart';
 import 'dart:ui';
 import 'dart:async';
-import 'dart:convert';
 import 'package:flutter_mjpeg/flutter_mjpeg.dart';
-import 'package:http/http.dart' as http;
 import '../../../core/config/app_config.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/services/database_helper.dart';
@@ -24,18 +22,12 @@ class _FrontDoorCamScreenState extends State<FrontDoorCamScreen> {
   List<LogEntry> _logs = [];
 
   // Stream state
-  Key _streamKey = UniqueKey(); // reset to force MJPEG reconnect
+  Key _streamKey = UniqueKey();
   bool _isStreamActive = true;
-  bool _isStreamConnected = false; // tracked via error callback
+  bool _isStreamConnected = false;
 
-  // Face recognition state machine
+  // Face result from MQTT (Python server publishes, Flutter just displays)
   List<Map<String, dynamic>> _recognizedFaces = [];
-  Timer? _recognizeTimer;
-  bool _isRecognizing = false;
-  bool _isCapturing = false;
-  DateTime? _faceDetectedTime;
-  bool _faceStable = false;
-  int _stableFaceCount = 0;
 
   // MQTT
   StreamSubscription? _mqttFaceSub;
@@ -44,214 +36,67 @@ class _FrontDoorCamScreenState extends State<FrontDoorCamScreen> {
   void initState() {
     super.initState();
     _loadData();
-    _startRecognitionTimer();
     _listenMQTT();
   }
 
   @override
   void dispose() {
-    _recognizeTimer?.cancel();
     _mqttFaceSub?.cancel();
     super.dispose();
   }
 
-  void _startRecognitionTimer() {
-    _recognizeTimer = Timer.periodic(
-      Duration(seconds: AppConfig.recognitionIntervalSeconds),
-      (_) { if (_isStreamActive && !_isCapturing) _sendFrameForRecognition(); },
-    );
-  }
-
-  // Lắng nghe kết quả nhận diện qua MQTT (từ AI server publish)
+  // Flutter chỉ lắng nghe MQTT — Python server tự pull frame và publish kết quả
   void _listenMQTT() {
     MQTTService().connect().then((_) {
       _mqttFaceSub = MQTTService().faceRecognitionStream.listen((event) {
         final topic = event['topic'] as String;
-        final data = event['data'] as Map<String, dynamic>;
+        final data  = event['data']  as Map<String, dynamic>;
 
         if (topic == AppConfig.topicFaceAlert) {
-          // Người lạ — push notification ngay lập tức
+          // Người lạ
           NotificationService.instance.showStrangerAlert();
+          DatabaseHelper.instance.addLog('Cảnh báo: Người lạ', 'Phát hiện khuôn mặt không xác định tại cửa');
+          if (mounted) {
+            _showBanner('CẢNH BÁO: Phát hiện người lạ!', AppColors.error);
+            setState(() => _recognizedFaces = [data]);
+          }
         } else if (topic == AppConfig.topicFaceResult) {
           final matched = data['matched'] as bool? ?? false;
           if (matched) {
-            final name = data['name'] as String? ?? '';
-            final role = data['role'] as String? ?? '';
+            final name       = data['name'] as String? ?? '';
+            final role       = data['role'] as String? ?? '';
             final confidence = data['confidence'] != null
                 ? '${((data['confidence'] as num) * 100).toStringAsFixed(0)}%'
                 : '';
-            NotificationService.instance.showMemberRecognized(
-              name: name, role: role, confidence: confidence,
-            );
+            NotificationService.instance.showMemberRecognized(name: name, role: role, confidence: confidence);
+            DatabaseHelper.instance.addLog('Nhận diện thành công', '$name tại cửa · $confidence');
           }
-          // Cập nhật overlay nếu màn hình đang mở
           if (mounted) {
-            setState(() {
-              _recognizedFaces = [data];
+            _showBanner(
+              matched ? 'Xin chào ${data['name']}! Chào mừng về nhà 👋' : 'Người lạ tại cửa',
+              matched ? AppColors.success : AppColors.error,
+            );
+            setState(() => _recognizedFaces = [data]);
+            // Tự xóa overlay sau 8 giây
+            Future.delayed(const Duration(seconds: 8), () {
+              if (mounted) setState(() => _recognizedFaces = []);
             });
           }
         }
+
+        // Reload logs
+        DatabaseHelper.instance.getLogs(limit: 30).then((logs) {
+          if (mounted) setState(() => _logs = logs.map(LogEntry.fromMap).toList());
+        });
       });
     });
   }
 
-  // ── Reconnect stream ──────────────────────────────────────────────────────
   void _reconnectStream() {
     setState(() {
       _streamKey = UniqueKey();
       _isStreamConnected = false;
     });
-  }
-
-  // ── Face recognition pipeline ─────────────────────────────────────────────
-  Future<void> _sendFrameForRecognition() async {
-    if (_isRecognizing || _isCapturing) return;
-    _isRecognizing = true;
-
-    try {
-      // Step 1: Grab test frame
-      final testRes = await http
-          .get(Uri.parse(AppConfig.captureUrl))
-          .timeout(const Duration(seconds: 3));
-      if (testRes.statusCode != 200) return;
-
-      final testBase64 = base64Encode(testRes.bodyBytes);
-
-      // Step 2: Check for motion + face
-      final checkRes = await http
-          .post(
-            Uri.parse(AppConfig.recognizeUrl),
-            headers: {'Content-Type': 'application/json'},
-            body: jsonEncode({'image_base64': testBase64}),
-          )
-          .timeout(const Duration(seconds: 4));
-      if (checkRes.statusCode != 200) return;
-
-      final checkJson = jsonDecode(checkRes.body);
-      final hasMotion = checkJson['motion'] as bool? ?? false;
-      final faceCount = checkJson['face_count'] as int? ?? 0;
-      final faces = List<Map<String, dynamic>>.from(
-        (checkJson['faces'] as List? ?? []).map((f) => Map<String, dynamic>.from(f)),
-      );
-
-      if (!hasMotion || faceCount == 0) {
-        // Reset stable tracking
-        _faceDetectedTime = null;
-        _faceStable = false;
-        _stableFaceCount = 0;
-        if (mounted && _recognizedFaces.isNotEmpty) {
-          setState(() => _recognizedFaces = []);
-        }
-        return;
-      }
-
-      // Step 3: Wait for face to be stable for 2 seconds
-      final now = DateTime.now();
-      if (_faceDetectedTime == null) {
-        _faceDetectedTime = now;
-        _stableFaceCount = 1;
-        return;
-      }
-
-      final elapsed = now.difference(_faceDetectedTime!);
-      _stableFaceCount++;
-
-      if (elapsed.inSeconds < AppConfig.faceStableThresholdSeconds) {
-        // Show countdown overlay
-        if (mounted && faces.isNotEmpty) {
-          final remaining = AppConfig.faceStableThresholdSeconds - elapsed.inSeconds;
-          setState(() {
-            _recognizedFaces = [{
-              'matched': null,
-              'name': 'Hold still... ${remaining}s',
-              'confidence': 0.0,
-            }];
-          });
-        }
-        return;
-      }
-
-      if (_faceStable || _isCapturing) return;
-      _faceStable = true;
-      _isCapturing = true;
-
-      // Show "processing" overlay
-      if (mounted) {
-        setState(() {
-          _recognizedFaces = [{'matched': null, 'name': 'Recognizing...', 'confidence': 0.0}];
-        });
-      }
-
-      // Step 4: Capture 4 frames (reuse test frame as first)
-      final capturedImages = <String>[testBase64];
-      for (int i = 1; i < 4; i++) {
-        try {
-          final r = await http
-              .get(Uri.parse(AppConfig.captureUrl))
-              .timeout(const Duration(seconds: 2));
-          if (r.statusCode == 200) capturedImages.add(base64Encode(r.bodyBytes));
-        } catch (_) {}
-        if (i < 3) await Future.delayed(const Duration(milliseconds: 500));
-      }
-
-      // Step 5: Send all frames for comparison
-      final recRes = await http
-          .post(
-            Uri.parse(AppConfig.autoCaptureCompareUrl),
-            headers: {'Content-Type': 'application/json'},
-            body: jsonEncode({'images_base64': capturedImages}),
-          )
-          .timeout(const Duration(seconds: 12));
-
-      if (recRes.statusCode != 200) return;
-      final recJson = jsonDecode(recRes.body);
-
-      if (recJson['matched'] == true) {
-        final name = recJson['name'] as String;
-        final id = recJson['id'] as String? ?? '';
-        final confidence = (recJson['confidence'] as num).toDouble();
-        final pct = (confidence * 100).toStringAsFixed(0);
-
-        await DatabaseHelper.instance.addLog(
-          'Nhận diện thành công',
-          '$name${id.isNotEmpty ? " (ID: $id)" : ""} tại cửa · $pct%',
-        );
-
-        if (mounted) {
-          _showBanner('Xin chào $name! Chào mừng về nhà 👋', AppColors.success);
-          setState(() {
-            _recognizedFaces = [{'matched': true, 'name': name, 'id': id, 'confidence': confidence}];
-          });
-        }
-      } else {
-        await DatabaseHelper.instance.addLog(
-          'Cảnh báo: Người lạ',
-          'Phát hiện khuôn mặt không xác định tại cửa chính',
-        );
-        if (mounted) {
-          _showBanner('CẢNH BÁO: Phát hiện người lạ tại cửa!', AppColors.error);
-          setState(() {
-            _recognizedFaces = [{'matched': false, 'name': 'Unknown', 'confidence': 0.0}];
-          });
-        }
-      }
-
-      // Reload logs
-      if (mounted) {
-        final updatedLogs = await DatabaseHelper.instance.getLogs(limit: 30);
-        if (mounted) {
-          setState(() => _logs = updatedLogs.map(LogEntry.fromMap).toList());
-        }
-      }
-    } catch (e) {
-      debugPrint('Recognition error: $e');
-    } finally {
-      _isRecognizing = false;
-      _faceDetectedTime = null;
-      _faceStable = false;
-      _stableFaceCount = 0;
-      _isCapturing = false;
-    }
   }
 
   void _showBanner(String msg, Color color) {

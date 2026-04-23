@@ -2,7 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:wifi_scan/wifi_scan.dart';
 import 'dart:async';
+import 'dart:convert';
+import 'package:http/http.dart' as http;
 import '../../../core/theme/app_theme.dart';
+import '../../../core/config/app_config.dart';
 import '../../../core/services/device_config_service.dart';
 
 class MyWiFiNetwork {
@@ -229,9 +232,10 @@ class _BLEWiFiProvisioningScreenState extends State<BLEWiFiProvisioningScreen> {
 
   void _onConnectedSuccessfully(String ip) {
     if (!mounted) return;
-    // Lưu IP mới vào persistent storage — AppConfig.streamUrl sẽ tự dùng IP này
     DeviceConfigService.instance.saveEsp32Ip(ip);
     _showSnack('ESP32 connected! IP: $ip', AppColors.success);
+    // Thông báo cho Python AI server biết IP mới của ESP32
+    _notifyAiServer(ip);
     Future.delayed(const Duration(seconds: 2), () {
       if (mounted) {
         Navigator.pop(context, {
@@ -241,6 +245,19 @@ class _BLEWiFiProvisioningScreenState extends State<BLEWiFiProvisioningScreen> {
           'wifiSSID': _selectedSSID ?? _ssidCtrl.text,
         });
       }
+    });
+  }
+
+  void _notifyAiServer(String ip) {
+    final url = '${AppConfig.aiBaseUrl}/config';
+    http.post(
+      Uri.parse(url),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'ip': ip, 'port': 81}),
+    ).then((_) {
+      debugPrint('AI server notified: ESP32 IP = $ip');
+    }).catchError((e) {
+      debugPrint('AI server notify failed (offline?): $e');
     });
   }
 
