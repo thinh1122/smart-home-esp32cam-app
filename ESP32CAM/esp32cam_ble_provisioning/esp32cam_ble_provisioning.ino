@@ -1,3 +1,9 @@
+/*
+ * ESP32-CAM: BLE WiFi Provisioning + MJPEG Stream only
+ * ESP32 job: connect WiFi via BLE, then stream MJPEG at low FPS
+ * Face recognition / AI / MQTT → handled by Python server, NOT here
+ */
+
 #include "esp_camera.h"
 #include "esp_http_server.h"
 #include <WiFi.h>
@@ -27,99 +33,100 @@
 #define HREF_GPIO_NUM     23
 #define PCLK_GPIO_NUM     22
 
+#define LED_PIN 4
+#define BOOT_PIN 0
+
 // ============================================================
 // BLE UUIDs
 // ============================================================
-#define SERVICE_UUID      "4fafc201-1fb5-459e-8fcc-c5c9c331914b"
-#define WIFI_SSID_UUID    "beb5483e-36e1-4688-b7f5-ea07361b26a8"
-#define WIFI_PASS_UUID    "1c95d5e3-d8f7-413a-bf3d-7a2e5d7be87e"
-#define STATUS_UUID       "d8de624e-140f-4a22-8594-e2216b84a5f2"
-#define WIFI_LIST_UUID    "2b8c9e50-7182-4f32-8414-b49911e0eb7e"
+#define SERVICE_UUID   "4fafc201-1fb5-459e-8fcc-c5c9c331914b"
+#define SSID_UUID      "beb5483e-36e1-4688-b7f5-ea07361b26a8"
+#define PASS_UUID      "1c95d5e3-d8f7-413a-bf3d-7a2e5d7be87e"
+#define STATUS_UUID    "d8de624e-140f-4a22-8594-e2216b84a5f2"
+#define WIFILIST_UUID  "2b8c9e50-7182-4f32-8414-b49911e0eb7e"
 
 // ============================================================
-// GLOBAL VARIABLES
+// Stream config — low FPS to keep ESP32 free
 // ============================================================
-Preferences preferences;
-BLECharacteristic* pStatusCharacteristic = NULL;
-BLECharacteristic* pWiFiListCharacteristic = NULL;
-bool deviceConnected   = false;
-bool wifiConfigReceived = false;
-String receivedSSID    = "";
-String receivedPassword = "";
+#define STREAM_FPS        10          // target FPS
+#define FRAME_DELAY_MS    (1000 / STREAM_FPS)
 
-httpd_handle_t stream_httpd = NULL;
+#define PART_BOUNDARY "123456789000000000000987654321"
+static const char* CONTENT_TYPE = "multipart/x-mixed-replace;boundary=" PART_BOUNDARY;
+static const char* BOUNDARY     = "\r\n--" PART_BOUNDARY "\r\n";
+static const char* FRAME_HDR    = "Content-Type: image/jpeg\r\nContent-Length: %u\r\n\r\n";
+
+// ============================================================
+// GLOBALS
+// ============================================================
+Preferences prefs;
+BLECharacteristic* pStatus   = nullptr;
+BLECharacteristic* pWifiList = nullptr;
+bool bleConnected     = false;
+bool wifiReceived     = false;
+String rxSSID         = "";
+String rxPass         = "";
+httpd_handle_t httpd  = nullptr;
 
 // ============================================================
 // BLE CALLBACKS
 // ============================================================
-class ServerCallbacks : public BLEServerCallbacks {
-  void onConnect(BLEServer*)    { deviceConnected = true;  Serial.println("📱 Flutter app đã kết nối BLE"); }
-  void onDisconnect(BLEServer*) { deviceConnected = false; Serial.println("📱 Flutter app ngắt kết nối BLE"); BLEDevice::startAdvertising(); }
+class BLEConn : public BLEServerCallbacks {
+  void onConnect(BLEServer*)    { bleConnected = true;  Serial.println("📱 BLE connected"); }
+  void onDisconnect(BLEServer*) { bleConnected = false; BLEDevice::startAdvertising(); }
 };
-
-class WiFiSSIDCallbacks : public BLECharacteristicCallbacks {
+class SSIDcb : public BLECharacteristicCallbacks {
   void onWrite(BLECharacteristic* c) {
-    String v = c->getValue().c_str();
-    if (v.length() > 0) { receivedSSID = v; Serial.println("📥 Nhận SSID: " + receivedSSID); }
+    rxSSID = c->getValue().c_str();
+    Serial.println("📥 SSID: " + rxSSID);
   }
 };
-
-class WiFiPasswordCallbacks : public BLECharacteristicCallbacks {
+class PASScb : public BLECharacteristicCallbacks {
   void onWrite(BLECharacteristic* c) {
-    String v = c->getValue().c_str();
-    if (v.length() > 0) { receivedPassword = v; Serial.println("📥 Nhận Password: " + receivedPassword); wifiConfigReceived = true; }
+    rxPass = c->getValue().c_str();
+    wifiReceived = true;
+    Serial.println("📥 Password received");
   }
 };
 
 // ============================================================
-// HTTP STREAM HANDLER (esp_http_server — MJPEG chuẩn)
+// HTTP HANDLERS
 // ============================================================
-// Target ~8 FPS to balance quality vs ESP32 load
-#define STREAM_FRAME_DELAY_MS 120
-
-#define PART_BOUNDARY "123456789000000000000987654321"
-static const char* STREAM_CONTENT_TYPE = "multipart/x-mixed-replace;boundary=" PART_BOUNDARY;
-static const char* STREAM_BOUNDARY     = "\r\n--" PART_BOUNDARY "\r\n";
-static const char* STREAM_PART        = "Content-Type: image/jpeg\r\nContent-Length: %u\r\n\r\n";
-
 static esp_err_t stream_handler(httpd_req_t* req) {
-  camera_fb_t* fb = NULL;
-  esp_err_t res = ESP_OK;
-  char part_buf[64];
+  camera_fb_t* fb = nullptr;
+  char hdr[64];
 
-  res = httpd_resp_set_type(req, STREAM_CONTENT_TYPE);
-  if (res != ESP_OK) return res;
-
+  httpd_resp_set_type(req, CONTENT_TYPE);
   httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
   httpd_resp_set_hdr(req, "Cache-Control", "no-cache, no-store, must-revalidate");
   httpd_resp_set_hdr(req, "Pragma", "no-cache");
 
+  TickType_t lastFrame = xTaskGetTickCount();
+
   while (true) {
     fb = esp_camera_fb_get();
-    if (!fb) { res = ESP_FAIL; break; }
+    if (!fb) { vTaskDelay(pdMS_TO_TICKS(100)); continue; }
 
-    if (res == ESP_OK) res = httpd_resp_send_chunk(req, STREAM_BOUNDARY, strlen(STREAM_BOUNDARY));
+    esp_err_t res = httpd_resp_send_chunk(req, BOUNDARY, strlen(BOUNDARY));
     if (res == ESP_OK) {
-      size_t hlen = snprintf(part_buf, sizeof(part_buf), STREAM_PART, fb->len);
-      res = httpd_resp_send_chunk(req, part_buf, hlen);
+      size_t hlen = snprintf(hdr, sizeof(hdr), FRAME_HDR, fb->len);
+      res = httpd_resp_send_chunk(req, hdr, hlen);
     }
     if (res == ESP_OK) res = httpd_resp_send_chunk(req, (const char*)fb->buf, fb->len);
-
     esp_camera_fb_return(fb);
-    if (res != ESP_OK) break;
 
-    // Throttle to ~8 FPS — prevents ESP32 from running at 100% and allows
-    // the HTTP server to process other requests (/capture, /status)
-    vTaskDelay(pdMS_TO_TICKS(STREAM_FRAME_DELAY_MS));
+    if (res != ESP_OK) break;  // client disconnected
+
+    // Throttle: wait remainder of frame interval
+    vTaskDelayUntil(&lastFrame, pdMS_TO_TICKS(FRAME_DELAY_MS));
   }
-  return res;
+  return ESP_OK;
 }
 
-// /capture → single JPEG
+// /capture → single JPEG snapshot (used by Python AI server)
 static esp_err_t capture_handler(httpd_req_t* req) {
   camera_fb_t* fb = esp_camera_fb_get();
   if (!fb) { httpd_resp_send_500(req); return ESP_FAIL; }
-
   httpd_resp_set_type(req, "image/jpeg");
   httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
   httpd_resp_set_hdr(req, "Cache-Control", "no-cache");
@@ -128,88 +135,43 @@ static esp_err_t capture_handler(httpd_req_t* req) {
   return res;
 }
 
-// /status → JSON
+// /status → JSON with IP
 static esp_err_t status_handler(httpd_req_t* req) {
   char json[128];
-  snprintf(json, sizeof(json), "{\"status\":\"connected\",\"ip\":\"%s\"}", WiFi.localIP().toString().c_str());
+  snprintf(json, sizeof(json),
+    "{\"status\":\"ok\",\"ip\":\"%s\",\"fps\":%d}",
+    WiFi.localIP().toString().c_str(), STREAM_FPS);
   httpd_resp_set_type(req, "application/json");
   httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
   return httpd_resp_send(req, json, strlen(json));
 }
 
+// ============================================================
+// CAMERA SERVER
+// ============================================================
 void startCameraServer() {
-  httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-  config.server_port      = 81;
-  config.ctrl_port        = 32768;
-  config.max_uri_handlers = 8;
-  config.stack_size       = 8192;
-  config.max_open_sockets = 3;   // 1 stream + 1 capture + 1 status
-  config.lru_purge_enable = true; // auto-close idle sockets
+  httpd_config_t cfg = HTTPD_DEFAULT_CONFIG();
+  cfg.server_port      = 81;
+  cfg.ctrl_port        = 32768;
+  cfg.max_uri_handlers = 8;
+  cfg.stack_size       = 8192;
+  cfg.max_open_sockets = 4;
+  cfg.lru_purge_enable = true;
+  cfg.recv_wait_timeout  = 10;
+  cfg.send_wait_timeout  = 10;
 
-  httpd_uri_t stream_uri  = { .uri = "/stream",  .method = HTTP_GET, .handler = stream_handler,  .user_ctx = NULL };
-  httpd_uri_t capture_uri = { .uri = "/capture", .method = HTTP_GET, .handler = capture_handler, .user_ctx = NULL };
-  httpd_uri_t status_uri  = { .uri = "/status",  .method = HTTP_GET, .handler = status_handler,  .user_ctx = NULL };
+  httpd_uri_t uris[] = {
+    { .uri = "/stream",  .method = HTTP_GET, .handler = stream_handler,  .user_ctx = nullptr },
+    { .uri = "/capture", .method = HTTP_GET, .handler = capture_handler, .user_ctx = nullptr },
+    { .uri = "/status",  .method = HTTP_GET, .handler = status_handler,  .user_ctx = nullptr },
+  };
 
-  if (httpd_start(&stream_httpd, &config) == ESP_OK) {
-    httpd_register_uri_handler(stream_httpd, &stream_uri);
-    httpd_register_uri_handler(stream_httpd, &capture_uri);
-    httpd_register_uri_handler(stream_httpd, &status_uri);
-    Serial.printf("✅ Camera server: http://%s:81/stream\n", WiFi.localIP().toString().c_str());
+  if (httpd_start(&httpd, &cfg) == ESP_OK) {
+    for (auto& u : uris) httpd_register_uri_handler(httpd, &u);
+    Serial.printf("✅ Stream: http://%s:81/stream\n", WiFi.localIP().toString().c_str());
+    Serial.printf("✅ Capture: http://%s:81/capture\n", WiFi.localIP().toString().c_str());
   } else {
-    Serial.println("❌ Camera server start failed");
-  }
-}
-
-// ============================================================
-// WIFI FUNCTIONS
-// ============================================================
-void loadWiFiConfig() {
-  preferences.begin("wifi", false);
-  String ssid     = preferences.getString("ssid", "");
-  String password = preferences.getString("password", "");
-  preferences.end();
-
-  if (ssid.length() > 0) {
-    Serial.println("📂 WiFi đã lưu: " + ssid);
-    connectToWiFi(ssid, password);
-  } else {
-    Serial.println("ℹ️ Chưa có WiFi → Khởi động BLE");
-  }
-}
-
-void saveWiFiConfig(String ssid, String password) {
-  preferences.begin("wifi", false);
-  preferences.putString("ssid", ssid);
-  preferences.putString("password", password);
-  preferences.end();
-  Serial.println("💾 Đã lưu WiFi: " + ssid);
-}
-
-bool connectToWiFi(String ssid, String password) {
-  Serial.println("🔌 Đang kết nối WiFi: " + ssid);
-  WiFi.mode(WIFI_STA);
-  WiFi.begin(ssid.c_str(), password.c_str());
-
-  int attempts = 0;
-  while (WiFi.status() != WL_CONNECTED && attempts < 20) {
-    delay(500); Serial.print("."); attempts++;
-  }
-
-  if (WiFi.status() == WL_CONNECTED) {
-    Serial.printf("\n✅ Kết nối thành công!\n   📍 IP: %s\n", WiFi.localIP().toString().c_str());
-    if (deviceConnected && pStatusCharacteristic) {
-      String status = "connected|" + WiFi.localIP().toString();
-      pStatusCharacteristic->setValue(status.c_str());
-      pStatusCharacteristic->notify();
-    }
-    return true;
-  } else {
-    Serial.println("\n❌ Kết nối thất bại!");
-    if (deviceConnected && pStatusCharacteristic) {
-      pStatusCharacteristic->setValue("failed");
-      pStatusCharacteristic->notify();
-    }
-    return false;
+    Serial.println("❌ HTTP server failed");
   }
 }
 
@@ -217,49 +179,45 @@ bool connectToWiFi(String ssid, String password) {
 // CAMERA INIT
 // ============================================================
 bool initCamera() {
-  camera_config_t config;
-  config.ledc_channel = LEDC_CHANNEL_0;
-  config.ledc_timer   = LEDC_TIMER_0;
-  config.pin_d0  = Y2_GPIO_NUM; config.pin_d1 = Y3_GPIO_NUM;
-  config.pin_d2  = Y4_GPIO_NUM; config.pin_d3 = Y5_GPIO_NUM;
-  config.pin_d4  = Y6_GPIO_NUM; config.pin_d5 = Y7_GPIO_NUM;
-  config.pin_d6  = Y8_GPIO_NUM; config.pin_d7 = Y9_GPIO_NUM;
-  config.pin_xclk  = XCLK_GPIO_NUM; config.pin_pclk  = PCLK_GPIO_NUM;
-  config.pin_vsync = VSYNC_GPIO_NUM; config.pin_href  = HREF_GPIO_NUM;
-  config.pin_sscb_sda = SIOD_GPIO_NUM; config.pin_sscb_scl = SIOC_GPIO_NUM;
-  config.pin_pwdn  = PWDN_GPIO_NUM; config.pin_reset = RESET_GPIO_NUM;
-  config.xclk_freq_hz = 10000000;
-  config.pixel_format = PIXFORMAT_JPEG;
+  camera_config_t cfg = {};
+  cfg.ledc_channel = LEDC_CHANNEL_0;
+  cfg.ledc_timer   = LEDC_TIMER_0;
+  cfg.pin_d0  = Y2_GPIO_NUM; cfg.pin_d1 = Y3_GPIO_NUM;
+  cfg.pin_d2  = Y4_GPIO_NUM; cfg.pin_d3 = Y5_GPIO_NUM;
+  cfg.pin_d4  = Y6_GPIO_NUM; cfg.pin_d5 = Y7_GPIO_NUM;
+  cfg.pin_d6  = Y8_GPIO_NUM; cfg.pin_d7 = Y9_GPIO_NUM;
+  cfg.pin_xclk     = XCLK_GPIO_NUM;
+  cfg.pin_pclk     = PCLK_GPIO_NUM;
+  cfg.pin_vsync    = VSYNC_GPIO_NUM;
+  cfg.pin_href     = HREF_GPIO_NUM;
+  cfg.pin_sscb_sda = SIOD_GPIO_NUM;
+  cfg.pin_sscb_scl = SIOC_GPIO_NUM;
+  cfg.pin_pwdn     = PWDN_GPIO_NUM;
+  cfg.pin_reset    = RESET_GPIO_NUM;
 
-  if (psramFound()) {
-    // QVGA 320x240 @ quality 15 → ~15KB/frame, comfortable for ESP32 WiFi
-    config.frame_size   = FRAMESIZE_QVGA;
-    config.jpeg_quality = 15;
-    config.fb_count     = 1;  // 1 buffer → lower latency, less PSRAM
-    config.fb_location  = CAMERA_FB_IN_PSRAM;
-  } else {
-    config.frame_size   = FRAMESIZE_QQVGA;
-    config.jpeg_quality = 20;
-    config.fb_count     = 1;
-    config.fb_location  = CAMERA_FB_IN_DRAM;
-  }
+  cfg.xclk_freq_hz = 10000000;   // 10MHz XCLK — stable, lower power than 20MHz
+  cfg.pixel_format = PIXFORMAT_JPEG;
+  cfg.frame_size   = FRAMESIZE_QVGA;   // 320x240 — good balance
+  cfg.jpeg_quality = 15;               // 10=best, 63=worst; 15 ≈ 15-20KB/frame
+  cfg.fb_count     = 1;               // 1 buffer — less RAM, lower latency
+  cfg.fb_location  = psramFound() ? CAMERA_FB_IN_PSRAM : CAMERA_FB_IN_DRAM;
+  cfg.grab_mode    = CAMERA_GRAB_LATEST; // always get latest frame, discard stale
 
-  esp_err_t err = esp_camera_init(&config);
-  if (err != ESP_OK) {
-    Serial.printf("❌ Camera init failed: 0x%x\n", err);
+  if (esp_camera_init(&cfg) != ESP_OK) {
+    Serial.println("❌ Camera init failed");
     return false;
   }
 
-  // Fine-tune sensor after init to reduce JPEG size and CPU load
   sensor_t* s = esp_camera_sensor_get();
   if (s) {
     s->set_framesize(s, FRAMESIZE_QVGA);
     s->set_quality(s, 15);
-    s->set_brightness(s, 1);   // slightly brighter for indoor
-    s->set_saturation(s, -1);  // reduce saturation → smaller JPEG
-    s->set_whitebal(s, 1);     // auto white balance
-    s->set_gain_ctrl(s, 1);    // auto gain
-    s->set_exposure_ctrl(s, 1); // auto exposure
+    s->set_brightness(s, 1);
+    s->set_saturation(s, -1);   // lower saturation → smaller JPEG
+    s->set_whitebal(s, 1);
+    s->set_gain_ctrl(s, 1);
+    s->set_exposure_ctrl(s, 1);
+    s->set_aec2(s, 1);          // advanced auto exposure
   }
 
   Serial.println("✅ Camera OK");
@@ -267,95 +225,125 @@ bool initCamera() {
 }
 
 // ============================================================
-// BLE INIT
+// WIFI
 // ============================================================
-void initBLE() {
-  // Lấy MAC trước khi scan
+void loadAndConnect() {
+  prefs.begin("wifi", true);
+  String ssid = prefs.getString("ssid", "");
+  String pass = prefs.getString("pass", "");
+  prefs.end();
+
+  if (ssid.isEmpty()) { Serial.println("ℹ️ No WiFi saved → BLE mode"); return; }
+
+  Serial.println("📂 Saved WiFi: " + ssid);
   WiFi.mode(WIFI_STA);
-  delay(100);
-  uint8_t mac[6];
-  WiFi.macAddress(mac);
-  String bleName = "ESP32CAM-" + String(mac[4], HEX) + String(mac[5], HEX);
-  bleName.toUpperCase();
+  WiFi.begin(ssid.c_str(), pass.c_str());
+  WiFi.setSleep(false);  // disable WiFi power save → stable stream
 
-  // Quét WiFi
-  Serial.println("🔍 [1/3] Đang quét WiFi xung quanh (trước khi bật BLE)...");
-  WiFi.disconnect();
-  delay(200);
-
-  int n = WiFi.scanNetworks();
-  String wifiListString = "";
-  if (n <= 0) {
-    Serial.println("   Không tìm thấy mạng WiFi nào.");
-  } else {
-    for (int i = 0; i < n; ++i) {
-      String ssid = WiFi.SSID(i);
-      if (ssid.length() > 0) wifiListString += ssid + ";";
-      if (wifiListString.length() > 200 || i >= 10) break;
-    }
-    Serial.println("   Đã tìm thấy: " + wifiListString);
+  Serial.print("🔌 Connecting");
+  for (int i = 0; i < 20 && WiFi.status() != WL_CONNECTED; i++) {
+    delay(500); Serial.print(".");
   }
-  WiFi.scanDelete();
 
-  // Tắt hoàn toàn WiFi để giải phóng RAM cho BLE
-  WiFi.mode(WIFI_OFF);
-  delay(500);
+  if (WiFi.status() == WL_CONNECTED) {
+    Serial.printf("\n✅ Connected! IP: %s\n", WiFi.localIP().toString().c_str());
+  } else {
+    Serial.println("\n❌ WiFi failed → BLE mode");
+    WiFi.disconnect(true);
+  }
+}
 
-  Serial.printf("   Free heap before BLE init: %d bytes\n", ESP.getFreeHeap());
-  Serial.println("🔵 [2/3] Khởi động BLE: " + bleName);
+bool connectWiFi(const String& ssid, const String& pass) {
+  WiFi.mode(WIFI_STA);
+  WiFi.begin(ssid.c_str(), pass.c_str());
+  WiFi.setSleep(false);
 
-  BLEDevice::init(bleName.c_str());
-  BLEServer* pServer = BLEDevice::createServer();
-  pServer->setCallbacks(new ServerCallbacks());
+  for (int i = 0; i < 20 && WiFi.status() != WL_CONNECTED; i++) {
+    delay(500); Serial.print(".");
+  }
 
-  BLEService* pService = pServer->createService(SERVICE_UUID);
+  if (WiFi.status() == WL_CONNECTED) {
+    Serial.printf("\n✅ IP: %s\n", WiFi.localIP().toString().c_str());
+    if (pStatus) {
+      String s = "connected|" + WiFi.localIP().toString();
+      pStatus->setValue(s.c_str());
+      pStatus->notify();
+    }
+    return true;
+  }
 
-  BLECharacteristic* pSSIDChar = pService->createCharacteristic(WIFI_SSID_UUID, BLECharacteristic::PROPERTY_WRITE);
-  pSSIDChar->setCallbacks(new WiFiSSIDCallbacks());
-
-  BLECharacteristic* pPasswordChar = pService->createCharacteristic(WIFI_PASS_UUID, BLECharacteristic::PROPERTY_WRITE);
-  pPasswordChar->setCallbacks(new WiFiPasswordCallbacks());
-
-  pStatusCharacteristic = pService->createCharacteristic(
-    STATUS_UUID, BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_NOTIFY);
-  pStatusCharacteristic->addDescriptor(new BLE2902());
-  pStatusCharacteristic->setValue("ready");
-
-  pWiFiListCharacteristic = pService->createCharacteristic(WIFI_LIST_UUID, BLECharacteristic::PROPERTY_READ);
-  pWiFiListCharacteristic->setValue(wifiListString.c_str());
-
-  pService->start();
-
-  BLEAdvertising* pAdvertising = BLEDevice::getAdvertising();
-  pAdvertising->addServiceUUID(SERVICE_UUID);
-  pAdvertising->setScanResponse(true);
-  pAdvertising->setMinPreferred(0x06);
-  pAdvertising->setMinPreferred(0x12);
-  BLEDevice::startAdvertising();
-
-  Serial.println("✅ [3/3] BLE sẵn sàng! Mở Flutter App để kết nối.");
-  Serial.println("   📱 App sẽ thấy danh sách WiFi ngay khi kết nối vào.");
+  if (pStatus) { pStatus->setValue("failed"); pStatus->notify(); }
+  return false;
 }
 
 // ============================================================
-// FACTORY RESET (giữ nút IO0 ≥ 3 giây)
+// BLE INIT
+// ============================================================
+void initBLE() {
+  // Get MAC before WiFi scan
+  WiFi.mode(WIFI_STA);
+  delay(100);
+  uint8_t mac[6]; WiFi.macAddress(mac);
+  String name = "ESP32CAM-" + String(mac[4], HEX) + String(mac[5], HEX);
+  name.toUpperCase();
+
+  // Scan WiFi networks
+  WiFi.disconnect();
+  int n = WiFi.scanNetworks();
+  String list = "";
+  for (int i = 0; i < min(n, 10); i++) {
+    if (WiFi.SSID(i).length() > 0) list += WiFi.SSID(i) + ";";
+    if (list.length() > 200) break;
+  }
+  WiFi.scanDelete();
+
+  // Free RAM: shut down WiFi before BLE
+  WiFi.mode(WIFI_OFF);
+  delay(500);
+
+  Serial.printf("Free heap: %d bytes\n", ESP.getFreeHeap());
+  Serial.println("🔵 BLE: " + name);
+
+  BLEDevice::init(name.c_str());
+  BLEServer* srv = BLEDevice::createServer();
+  srv->setCallbacks(new BLEConn());
+
+  BLEService* svc = srv->createService(SERVICE_UUID);
+
+  auto* ssidChar = svc->createCharacteristic(SSID_UUID, BLECharacteristic::PROPERTY_WRITE);
+  ssidChar->setCallbacks(new SSIDcb());
+
+  auto* passChar = svc->createCharacteristic(PASS_UUID, BLECharacteristic::PROPERTY_WRITE);
+  passChar->setCallbacks(new PASScb());
+
+  pStatus = svc->createCharacteristic(STATUS_UUID,
+    BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_NOTIFY);
+  pStatus->addDescriptor(new BLE2902());
+  pStatus->setValue("ready");
+
+  pWifiList = svc->createCharacteristic(WIFILIST_UUID, BLECharacteristic::PROPERTY_READ);
+  pWifiList->setValue(list.c_str());
+
+  svc->start();
+  BLEAdvertising* adv = BLEDevice::getAdvertising();
+  adv->addServiceUUID(SERVICE_UUID);
+  adv->setScanResponse(true);
+  BLEDevice::startAdvertising();
+
+  Serial.println("✅ BLE ready — waiting for Flutter app");
+}
+
+// ============================================================
+// FACTORY RESET (hold IO0 ≥ 3s)
 // ============================================================
 void checkFactoryReset() {
-  if (digitalRead(0) != LOW) return;
-
-  unsigned long pressStart = millis();
-  while (digitalRead(0) == LOW) {
-    unsigned long held = millis() - pressStart;
-    digitalWrite(4, (held / 500) % 2);
-    if (held >= 3000) {
-      digitalWrite(4, HIGH);
-      Serial.println("\n🗑️  Factory Reset! Xóa WiFi...");
-      preferences.begin("wifi", false);
-      preferences.clear();
-      preferences.end();
-      delay(1000);
-      digitalWrite(4, LOW);
-      Serial.println("✅ Đã xóa. Khởi động lại vào chế độ BLE...");
+  if (digitalRead(BOOT_PIN) != LOW) return;
+  unsigned long t = millis();
+  while (digitalRead(BOOT_PIN) == LOW) {
+    digitalWrite(LED_PIN, (millis() - t) / 500 % 2);
+    if (millis() - t >= 3000) {
+      Serial.println("🗑️ Factory reset!");
+      prefs.begin("wifi", false); prefs.clear(); prefs.end();
       delay(500);
       ESP.restart();
     }
@@ -367,21 +355,22 @@ void checkFactoryReset() {
 // ============================================================
 void setup() {
   Serial.begin(115200);
-  delay(1000);
+  delay(500);
 
   Serial.println("\n============================================================");
   Serial.println("🚀 ESP32-CAM BLE Provisioning");
   Serial.println("============================================================");
 
-  pinMode(0, INPUT_PULLUP);
-  pinMode(4, OUTPUT);
-  digitalWrite(4, LOW);
+  pinMode(BOOT_PIN, INPUT_PULLUP);
+  pinMode(LED_PIN, OUTPUT);
+  digitalWrite(LED_PIN, LOW);
 
-  loadWiFiConfig();
+  loadAndConnect();
 
   if (WiFi.status() == WL_CONNECTED) {
     if (initCamera()) {
       startCameraServer();
+      digitalWrite(LED_PIN, HIGH);  // LED on = streaming ready
     }
   } else {
     initBLE();
@@ -391,33 +380,42 @@ void setup() {
 }
 
 // ============================================================
-// LOOP
+// LOOP — minimal: just factory reset check + WiFi watchdog
 // ============================================================
 void loop() {
   checkFactoryReset();
 
-  if (wifiConfigReceived) {
-    wifiConfigReceived = false;
-    Serial.println("\n🔄 Đang xử lý WiFi config...");
+  // BLE provisioning flow
+  if (wifiReceived) {
+    wifiReceived = false;
+    Serial.println("🔄 WiFi config received...");
+    if (pStatus) { pStatus->setValue("connecting"); pStatus->notify(); }
+    delay(500);
 
-    if (pStatusCharacteristic) {
-      pStatusCharacteristic->setValue("connecting");
-      pStatusCharacteristic->notify();
-    }
-    delay(1000);
-
-    if (connectToWiFi(receivedSSID, receivedPassword)) {
-      saveWiFiConfig(receivedSSID, receivedPassword);
-      delay(2000);
-      Serial.println("🔄 Restart để khởi động Camera với RAM sạch...");
-      delay(500);
+    if (connectWiFi(rxSSID, rxPass)) {
+      prefs.begin("wifi", false);
+      prefs.putString("ssid", rxSSID);
+      prefs.putString("pass", rxPass);
+      prefs.end();
+      delay(1500);
+      Serial.println("🔄 Restarting into camera mode...");
+      delay(300);
       ESP.restart();
     } else {
-      Serial.println("⚠️ Kết nối thất bại → Restart...");
-      delay(3000);
+      delay(2000);
       ESP.restart();
     }
   }
 
-  delay(10);
+  // WiFi watchdog: auto-reconnect if dropped
+  if (WiFi.status() != WL_CONNECTED && httpd != nullptr) {
+    Serial.println("⚠️ WiFi lost — reconnecting...");
+    prefs.begin("wifi", true);
+    String ssid = prefs.getString("ssid", "");
+    String pass = prefs.getString("pass", "");
+    prefs.end();
+    if (!ssid.isEmpty()) connectWiFi(ssid, pass);
+  }
+
+  delay(5000);  // check every 5s — loop does almost nothing
 }
