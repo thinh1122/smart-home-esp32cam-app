@@ -19,17 +19,18 @@ class AppConfig {
   static const int aiPort = 5000;
   static String get aiBaseUrl => 'http://$aiHost:$aiPort';
 
-  // ESP32-CAM — IP động, tự động cập nhật sau BLE provisioning
-  // DeviceConfigService.instance.init() phải được gọi trong main() trước runApp()
-  static String get streamUrl => DeviceConfigService.instance.streamUrl;
+  // Stream URL — dùng Python relay để tránh quá tải ESP32 (ESP32 chỉ chịu 1 client)
+  // Flutter đọc từ relay, Python server tự kéo 1 kết nối duy nhất từ ESP32
+  static String get streamUrl => '$aiBaseUrl/stream';
+
+  // ESP32 trực tiếp — chỉ dùng nội bộ (Python server gọi để lấy frame cho AI)
+  static String get esp32StreamUrl => DeviceConfigService.instance.streamUrl;
   static String get captureUrl => DeviceConfigService.instance.captureUrl;
 
   // AI server endpoints
-  static String get recognizeUrl => '$aiBaseUrl/recognize';
   static String get enrollUrl => '$aiBaseUrl/enroll';
   static String get deleteUrl => '$aiBaseUrl/delete';
   static String get membersUrl => '$aiBaseUrl/members';
-  static String get autoCaptureCompareUrl => '$aiBaseUrl/auto_capture_compare';
 
   // MQTT Topics
   static const String topicFaceResult = 'home/face_recognition/result';
