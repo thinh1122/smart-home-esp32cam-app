@@ -6,7 +6,7 @@ class DeviceConfigService {
 
   static const _keyEsp32Ip = 'esp32_ip';
   static const _keyEsp32Port = 'esp32_port';
-  static const _defaultIp = '192.168.110.230';
+  static const _defaultIp = '';
   static const _defaultPort = 81;
 
   String _esp32Ip = _defaultIp;
@@ -18,11 +18,22 @@ class DeviceConfigService {
   String get streamUrl => '$esp32BaseUrl/stream';
   String get captureUrl => '$esp32BaseUrl/capture';
 
+  bool get hasIp => _esp32Ip.isNotEmpty;
+
   // Gọi 1 lần khi app khởi động
   Future<void> init() async {
     final prefs = await SharedPreferences.getInstance();
-    _esp32Ip = prefs.getString(_keyEsp32Ip) ?? _defaultIp;
-    _esp32Port = prefs.getInt(_keyEsp32Port) ?? _defaultPort;
+    final savedPort = prefs.getInt(_keyEsp32Port) ?? _defaultPort;
+    // Clear stale config from old version that used port 8080
+    if (savedPort == 8080) {
+      await prefs.remove(_keyEsp32Ip);
+      await prefs.remove(_keyEsp32Port);
+      _esp32Ip = _defaultIp;
+      _esp32Port = _defaultPort;
+    } else {
+      _esp32Ip = prefs.getString(_keyEsp32Ip) ?? _defaultIp;
+      _esp32Port = savedPort;
+    }
   }
 
   // Gọi khi BLE provisioning thành công và nhận được IP mới

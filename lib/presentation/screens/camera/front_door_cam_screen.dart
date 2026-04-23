@@ -7,6 +7,7 @@ import 'package:http/http.dart' as http;
 import '../../../core/config/app_config.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/services/database_helper.dart';
+import '../../../core/services/device_config_service.dart';
 import '../../../core/services/mqtt_service.dart';
 import '../../../core/services/notification_service.dart';
 import '../../../data/models/log_model.dart';
@@ -417,16 +418,24 @@ class _FrontDoorCamScreenState extends State<FrontDoorCamScreen> {
   }
 
   Widget _buildStreamError() {
+    final hasIp = DeviceConfigService.instance.hasIp;
     return Container(
       color: AppColors.cardElevated,
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          const Icon(Icons.videocam_off_rounded, color: Colors.white24, size: 44),
+          Icon(hasIp ? Icons.videocam_off_rounded : Icons.wifi_off_rounded, color: Colors.white24, size: 44),
           const SizedBox(height: 12),
-          const Text('Camera offline', style: TextStyle(color: Colors.white54, fontSize: 14, fontWeight: FontWeight.w600)),
+          Text(
+            hasIp ? 'Camera offline' : 'Chưa cấu hình ESP32',
+            style: const TextStyle(color: Colors.white54, fontSize: 14, fontWeight: FontWeight.w600),
+          ),
           const SizedBox(height: 4),
-          Text(AppConfig.streamUrl, style: const TextStyle(color: Colors.white30, fontSize: 10)),
+          Text(
+            hasIp ? AppConfig.streamUrl : 'Vào Devices → BLE Provisioning để kết nối ESP32-CAM',
+            style: const TextStyle(color: Colors.white30, fontSize: 10),
+            textAlign: TextAlign.center,
+          ),
           const SizedBox(height: 16),
           GestureDetector(
             onTap: _reconnectStream,
