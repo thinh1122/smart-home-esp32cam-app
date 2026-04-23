@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git status *)",
+      "Bash(dir \"C:\\\\Users\\\\DELL\\\\AndroidStudioProjects\\\\DATN\\\\FLUTTER\\\\lib\\\\presentation\\\\screens\\\\members\")",
+      "Bash(dir \"C:\\\\Users\\\\DELL\\\\AndroidStudioProjects\\\\DATN\\\\FLUTTER\\\\lib\\\\core\\\\services\")",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(git push *)"
+    ]
+  }
+}

@@ -1,0 +1,36 @@
+# IDE files
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS files
+Thumbs.db
+.DS_Store
+
+# Mobile/Flutter specific (handled by subfolder .gitignore, but safe to add here)
+**/build/
+**/.dart_tool/
+**/.pub-cache/
+**/.packages
+**/ios/Flutter/Generated.xcconfig
+**/android/local.properties
+
+# Node / JS
+**/node_modules/
+**/dist/
+**/npm-debug.log*
+
+# Python specific
+**/__pycache__/
+**/*.pyc
+**/*.pyo
+**/*.pyd
+**/.env
+**/.venv/
+**/venv/
+**/env/
+
+# Data/Models (if they are large)
+**/faces_registry.db
+**/haarcascades/
