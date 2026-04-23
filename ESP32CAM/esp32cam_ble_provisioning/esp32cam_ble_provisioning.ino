@@ -74,7 +74,10 @@ class WiFiPasswordCallbacks : public BLECharacteristicCallbacks {
 // ============================================================
 // HTTP STREAM HANDLER (esp_http_server — MJPEG chuẩn)
 // ============================================================
-#define PART_BOUNDARY "frame"
+// Target ~8 FPS to balance quality vs ESP32 load
+#define STREAM_FRAME_DELAY_MS 120
+
+#define PART_BOUNDARY "123456789000000000000987654321"
 static const char* STREAM_CONTENT_TYPE = "multipart/x-mixed-replace;boundary=" PART_BOUNDARY;
 static const char* STREAM_BOUNDARY     = "\r\n--" PART_BOUNDARY "\r\n";
 static const char* STREAM_PART        = "Content-Type: image/jpeg\r\nContent-Length: %u\r\n\r\n";
@@ -89,12 +92,13 @@ static esp_err_t stream_handler(httpd_req_t* req) {
 
   httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
   httpd_resp_set_hdr(req, "Cache-Control", "no-cache, no-store, must-revalidate");
+  httpd_resp_set_hdr(req, "Pragma", "no-cache");
 
   while (true) {
     fb = esp_camera_fb_get();
-    if (!fb) { Serial.println("Camera capture failed"); res = ESP_FAIL; break; }
+    if (!fb) { res = ESP_FAIL; break; }
 
-    res = httpd_resp_send_chunk(req, STREAM_BOUNDARY, strlen(STREAM_BOUNDARY));
+    if (res == ESP_OK) res = httpd_resp_send_chunk(req, STREAM_BOUNDARY, strlen(STREAM_BOUNDARY));
     if (res == ESP_OK) {
       size_t hlen = snprintf(part_buf, sizeof(part_buf), STREAM_PART, fb->len);
       res = httpd_resp_send_chunk(req, part_buf, hlen);
@@ -103,6 +107,10 @@ static esp_err_t stream_handler(httpd_req_t* req) {
 
     esp_camera_fb_return(fb);
     if (res != ESP_OK) break;
+
+    // Throttle to ~8 FPS — prevents ESP32 from running at 100% and allows
+    // the HTTP server to process other requests (/capture, /status)
+    vTaskDelay(pdMS_TO_TICKS(STREAM_FRAME_DELAY_MS));
   }
   return res;
 }
@@ -131,10 +139,12 @@ static esp_err_t status_handler(httpd_req_t* req) {
 
 void startCameraServer() {
   httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-  config.server_port = 81;
-  config.ctrl_port   = 32768;
+  config.server_port      = 81;
+  config.ctrl_port        = 32768;
   config.max_uri_handlers = 8;
-  config.stack_size  = 8192;
+  config.stack_size       = 8192;
+  config.max_open_sockets = 3;   // 1 stream + 1 capture + 1 status
+  config.lru_purge_enable = true; // auto-close idle sockets
 
   httpd_uri_t stream_uri  = { .uri = "/stream",  .method = HTTP_GET, .handler = stream_handler,  .user_ctx = NULL };
   httpd_uri_t capture_uri = { .uri = "/capture", .method = HTTP_GET, .handler = capture_handler, .user_ctx = NULL };
@@ -222,13 +232,14 @@ bool initCamera() {
   config.pixel_format = PIXFORMAT_JPEG;
 
   if (psramFound()) {
+    // QVGA 320x240 @ quality 15 → ~15KB/frame, comfortable for ESP32 WiFi
     config.frame_size   = FRAMESIZE_QVGA;
-    config.jpeg_quality = 12;
-    config.fb_count     = 2;
+    config.jpeg_quality = 15;
+    config.fb_count     = 1;  // 1 buffer → lower latency, less PSRAM
     config.fb_location  = CAMERA_FB_IN_PSRAM;
   } else {
     config.frame_size   = FRAMESIZE_QQVGA;
-    config.jpeg_quality = 15;
+    config.jpeg_quality = 20;
     config.fb_count     = 1;
     config.fb_location  = CAMERA_FB_IN_DRAM;
   }
@@ -238,6 +249,19 @@ bool initCamera() {
     Serial.printf("❌ Camera init failed: 0x%x\n", err);
     return false;
   }
+
+  // Fine-tune sensor after init to reduce JPEG size and CPU load
+  sensor_t* s = esp_camera_sensor_get();
+  if (s) {
+    s->set_framesize(s, FRAMESIZE_QVGA);
+    s->set_quality(s, 15);
+    s->set_brightness(s, 1);   // slightly brighter for indoor
+    s->set_saturation(s, -1);  // reduce saturation → smaller JPEG
+    s->set_whitebal(s, 1);     // auto white balance
+    s->set_gain_ctrl(s, 1);    // auto gain
+    s->set_exposure_ctrl(s, 1); // auto exposure
+  }
+
   Serial.println("✅ Camera OK");
   return true;
 }
