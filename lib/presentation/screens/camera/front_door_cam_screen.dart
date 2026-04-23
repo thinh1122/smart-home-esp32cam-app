@@ -7,6 +7,8 @@ import 'package:http/http.dart' as http;
 import '../../../core/config/app_config.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/services/database_helper.dart';
+import '../../../core/services/mqtt_service.dart';
+import '../../../core/services/notification_service.dart';
 import '../../../data/models/log_model.dart';
 import '../members/members_screen.dart';
 
@@ -34,20 +36,62 @@ class _FrontDoorCamScreenState extends State<FrontDoorCamScreen> {
   bool _faceStable = false;
   int _stableFaceCount = 0;
 
+  // MQTT
+  StreamSubscription? _mqttFaceSub;
+
   @override
   void initState() {
     super.initState();
     _loadData();
+    _startRecognitionTimer();
+    _listenMQTT();
+  }
+
+  @override
+  void dispose() {
+    _recognizeTimer?.cancel();
+    _mqttFaceSub?.cancel();
+    super.dispose();
+  }
+
+  void _startRecognitionTimer() {
     _recognizeTimer = Timer.periodic(
       Duration(seconds: AppConfig.recognitionIntervalSeconds),
       (_) { if (_isStreamActive && !_isCapturing) _sendFrameForRecognition(); },
     );
   }
 
-  @override
-  void dispose() {
-    _recognizeTimer?.cancel();
-    super.dispose();
+  // Lắng nghe kết quả nhận diện qua MQTT (từ AI server publish)
+  void _listenMQTT() {
+    MQTTService().connect().then((_) {
+      _mqttFaceSub = MQTTService().faceRecognitionStream.listen((event) {
+        final topic = event['topic'] as String;
+        final data = event['data'] as Map<String, dynamic>;
+
+        if (topic == AppConfig.topicFaceAlert) {
+          // Người lạ — push notification ngay lập tức
+          NotificationService.instance.showStrangerAlert();
+        } else if (topic == AppConfig.topicFaceResult) {
+          final matched = data['matched'] as bool? ?? false;
+          if (matched) {
+            final name = data['name'] as String? ?? '';
+            final role = data['role'] as String? ?? '';
+            final confidence = data['confidence'] != null
+                ? '${((data['confidence'] as num) * 100).toStringAsFixed(0)}%'
+                : '';
+            NotificationService.instance.showMemberRecognized(
+              name: name, role: role, confidence: confidence,
+            );
+          }
+          // Cập nhật overlay nếu màn hình đang mở
+          if (mounted) {
+            setState(() {
+              _recognizedFaces = [data];
+            });
+          }
+        }
+      });
+    });
   }
 
   // ── Reconnect stream ──────────────────────────────────────────────────────

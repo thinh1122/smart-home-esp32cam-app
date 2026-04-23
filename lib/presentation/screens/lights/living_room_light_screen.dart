@@ -1,5 +1,6 @@
-import 'package:flutter/material.dart';
+import 'dart:async';
 import 'dart:math';
+import 'package:flutter/material.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/services/mqtt_service.dart';
 import '../../widgets/painters/brightness_ring_painter.dart';
@@ -19,6 +20,8 @@ class _LivingRoomLightScreenState extends State<LivingRoomLightScreen> {
   double _colorWheelAngle = pi * 0.75;
   Color _selectedColor = const Color(0xFFE040FB);
   String _selectedScene = 'Reading';
+  Timer? _brightnessDebounce;
+  Timer? _colorDebounce;
 
   final _scenes = const [
     _Scene('Cinema', 'Warm · 20%', Icons.movie_rounded, Color(0xFFFFA040)),
@@ -34,9 +37,45 @@ class _LivingRoomLightScreenState extends State<LivingRoomLightScreen> {
     _ColorPreset(Color(0xFFE040FB), 'Orchid'),
   ];
 
+  @override
+  void dispose() {
+    _brightnessDebounce?.cancel();
+    _colorDebounce?.cancel();
+    super.dispose();
+  }
+
   void _toggleLight(bool v) {
     setState(() => _isOn = v);
     MQTTService().controlLight('living_room', v);
+  }
+
+  void _publishBrightness(double value) {
+    _brightnessDebounce?.cancel();
+    _brightnessDebounce = Timer(const Duration(milliseconds: 300), () {
+      MQTTService().publish('home/devices/light/living_room/brightness', {
+        'brightness': (value * 100).round(),
+        'ts': DateTime.now().millisecondsSinceEpoch,
+      });
+    });
+  }
+
+  void _publishColor(Color color) {
+    _colorDebounce?.cancel();
+    _colorDebounce = Timer(const Duration(milliseconds: 300), () {
+      MQTTService().publish('home/devices/light/living_room/color', {
+        'r': color.red, 'g': color.green, 'b': color.blue,
+        'hex': '#${color.value.toRadixString(16).substring(2).toUpperCase()}',
+        'ts': DateTime.now().millisecondsSinceEpoch,
+      });
+    });
+  }
+
+  void _applyScene(_Scene scene) {
+    setState(() => _selectedScene = scene.name);
+    MQTTService().publish('home/devices/light/living_room/scene', {
+      'scene': scene.name,
+      'ts': DateTime.now().millisecondsSinceEpoch,
+    });
   }
 
   @override
@@ -132,9 +171,10 @@ class _LivingRoomLightScreenState extends State<LivingRoomLightScreen> {
                 final center = Offset(120, 120);
                 final pos = details.localPosition;
                 final angle = atan2(pos.dy - center.dy, pos.dx - center.dx);
-                // Map angle to brightness (0→1), normalized from 6 o'clock
                 final norm = (angle - pi / 2) / (2 * pi);
-                setState(() => _brightness = (norm + 1) % 1);
+                final newBrightness = (norm + 1) % 1;
+                setState(() => _brightness = newBrightness);
+                _publishBrightness(newBrightness);
               },
               child: Stack(
                 alignment: Alignment.center,
@@ -244,10 +284,9 @@ class _LivingRoomLightScreenState extends State<LivingRoomLightScreen> {
                   final center = const Offset(110, 110);
                   final pos = details.localPosition;
                   final angle = atan2(pos.dy - center.dy, pos.dx - center.dx);
-                  setState(() {
-                    _colorWheelAngle = angle;
-                    _selectedColor = HSVColor.fromAHSV(1, (angle / (2 * pi) * 360 + 360) % 360, 0.8, 1).toColor();
-                  });
+                  final newColor = HSVColor.fromAHSV(1, (angle / (2 * pi) * 360 + 360) % 360, 0.8, 1).toColor();
+                  setState(() { _colorWheelAngle = angle; _selectedColor = newColor; });
+                  _publishColor(newColor);
                 },
                 child: SizedBox(
                   width: 220, height: 220,
@@ -269,7 +308,7 @@ class _LivingRoomLightScreenState extends State<LivingRoomLightScreen> {
   Widget _colorChip(_ColorPreset p) {
     final isSelected = _selectedColor.value == p.color.value;
     return GestureDetector(
-      onTap: () => setState(() => _selectedColor = p.color),
+      onTap: () { setState(() => _selectedColor = p.color); _publishColor(p.color); },
       child: Column(
         children: [
           AnimatedContainer(
@@ -312,7 +351,7 @@ class _LivingRoomLightScreenState extends State<LivingRoomLightScreen> {
   Widget _sceneCard(_Scene s) {
     final isSelected = _selectedScene == s.name;
     return GestureDetector(
-      onTap: () => setState(() => _selectedScene = s.name),
+      onTap: () => _applyScene(s),
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
