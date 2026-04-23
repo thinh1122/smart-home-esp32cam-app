@@ -51,6 +51,44 @@ TOPIC_FACE_ALERT  = "home/face_recognition/alert"
 TOPIC_SYSTEM_LOG  = "home/system/log"
 
 # ============================================================
+# MJPEG RELAY — kéo 1 luồng từ ESP32, broadcast ra nhiều client
+# ESP32 chỉ chịu 1 kết nối stream → relay giải quyết vấn đề này
+# ============================================================
+relay_frame       = None      # JPEG bytes của frame mới nhất
+relay_lock        = threading.Lock()
+relay_subscribers = set()     # set of threading.Event, mỗi client 1 event
+relay_sub_lock    = threading.Lock()
+
+def relay_worker():
+    """Kéo MJPEG stream từ ESP32, lưu frame mới nhất, báo hiệu cho tất cả subscribers."""
+    global relay_frame
+    print("📹 MJPEG relay worker started")
+    while True:
+        url = f"http://{ESP32_IP}:{ESP32_PORT}/stream"
+        try:
+            r = requests.get(url, stream=True, timeout=10)
+            buf = b''
+            for chunk in r.iter_content(chunk_size=4096):
+                buf += chunk
+                # Tìm JPEG boundaries
+                while True:
+                    start = buf.find(b'\xff\xd8')
+                    end   = buf.find(b'\xff\xd9')
+                    if start == -1 or end == -1 or end < start:
+                        break
+                    jpg = buf[start:end + 2]
+                    buf = buf[end + 2:]
+                    with relay_lock:
+                        relay_frame = jpg
+                    # Báo hiệu tất cả client đang chờ
+                    with relay_sub_lock:
+                        for ev in relay_subscribers:
+                            ev.set()
+        except Exception as e:
+            print(f"⚠️ Relay worker error: {e} — retry in 2s")
+            time.sleep(2)
+
+# ============================================================
 # SHARED STATE
 # ============================================================
 lock              = threading.Lock()
@@ -116,17 +154,13 @@ def publish(topic, payload):
 # CAMERA — pull single JPEG from ESP32
 # ============================================================
 def capture_frame():
-    """Lấy 1 frame JPEG từ ESP32 /capture endpoint"""
-    url = f"http://{ESP32_IP}:{ESP32_PORT}/capture"
-    try:
-        r = requests.get(url, timeout=4)
-        if r.status_code == 200 and len(r.content) > 0:
-            arr = np.frombuffer(r.content, np.uint8)
-            bgr = cv2.imdecode(arr, cv2.IMREAD_COLOR)
-            return bgr
-    except Exception as e:
-        print(f"⚠️ capture_frame error: {e}")
-    return None
+    """Lấy frame mới nhất từ relay buffer (không tạo thêm kết nối tới ESP32)."""
+    with relay_lock:
+        jpg = relay_frame
+    if jpg is None:
+        return None
+    arr = np.frombuffer(jpg, np.uint8)
+    return cv2.imdecode(arr, cv2.IMREAD_COLOR)
 
 # ============================================================
 # IMAGE PROCESSING
@@ -448,6 +482,44 @@ def health():
     return jsonify({'status': 'ok'}), 200
 
 # ============================================================
+# MJPEG RELAY ENDPOINT
+# Flutter kết nối vào đây — relay phân phối lại cho nhiều client
+# ESP32 chỉ có đúng 1 kết nối stream (từ relay_worker)
+# ============================================================
+RELAY_BOUNDARY = b'--frame'
+
+@app.route('/stream')
+def stream_relay():
+    def generate():
+        ev = threading.Event()
+        with relay_sub_lock:
+            relay_subscribers.add(ev)
+        try:
+            while True:
+                ev.wait(timeout=5)   # chờ frame mới tối đa 5s
+                ev.clear()
+                with relay_lock:
+                    jpg = relay_frame
+                if jpg is None:
+                    continue
+                yield (
+                    RELAY_BOUNDARY +
+                    b'\r\nContent-Type: image/jpeg\r\nContent-Length: ' +
+                    str(len(jpg)).encode() +
+                    b'\r\n\r\n' + jpg + b'\r\n'
+                )
+        except GeneratorExit:
+            pass
+        finally:
+            with relay_sub_lock:
+                relay_subscribers.discard(ev)
+
+    return app.response_class(
+        generate(),
+        mimetype='multipart/x-mixed-replace; boundary=frame',
+    )
+
+# ============================================================
 # MAIN
 # ============================================================
 if __name__ == '__main__':
@@ -457,10 +529,17 @@ if __name__ == '__main__':
     load_known_faces()
     init_mqtt()
 
-    # Start background recognition worker (đây là Cách B)
+    # Relay: kéo 1 kết nối từ ESP32, broadcast ra nhiều client Flutter
+    threading.Thread(target=relay_worker, daemon=True).start()
+
+    # Recognition: dùng relay_frame thay vì gọi thêm kết nối tới ESP32
     threading.Thread(target=recognition_worker, daemon=True).start()
-    print(f"🚀 AI Server running on :5000")
-    print(f"📹 Pulling frames from http://{ESP32_IP}:{ESP32_PORT}/capture")
-    print(f"📡 Publishing results to MQTT broker.hivemq.com")
+
+    print(f"🚀 AI Server: http://0.0.0.0:5000")
+    print(f"📹 MJPEG relay: http://<PC_IP>:5000/stream  (Flutter trỏ vào đây)")
+    print(f"🔗 ESP32 source: http://{ESP32_IP}:{ESP32_PORT}/stream  (1 kết nối duy nhất)")
+    print(f"📡 MQTT: {MQTT_BROKER}:{MQTT_PORT}")
+
+    app.run(host='0.0.0.0', port=5000, debug=False, threaded=True)
 
     app.run(host='0.0.0.0', port=5000, debug=False, threaded=True)
