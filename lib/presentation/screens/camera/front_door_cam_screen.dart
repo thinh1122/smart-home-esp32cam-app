@@ -265,7 +265,7 @@ class _FrontDoorCamScreenState extends State<FrontDoorCamScreen> {
   }
 
   Widget _buildStreamError() {
-    final hasIp = DeviceConfigService.instance.hasIp;
+    final hasIp = DeviceConfigService.instance.hasAiIp;
     return Container(
       color: AppColors.cardElevated,
       child: Column(
@@ -279,7 +279,7 @@ class _FrontDoorCamScreenState extends State<FrontDoorCamScreen> {
           ),
           const SizedBox(height: 4),
           Text(
-            hasIp ? AppConfig.streamUrl : 'Vào Devices → BLE Provisioning để kết nối ESP32-CAM',
+            hasIp ? AppConfig.streamUrl : 'Vào Devices → Cấu hình AI Server để kết nối camera',
             style: const TextStyle(color: Colors.white30, fontSize: 10),
             textAlign: TextAlign.center,
           ),

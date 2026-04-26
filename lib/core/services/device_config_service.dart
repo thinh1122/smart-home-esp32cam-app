@@ -4,53 +4,73 @@ class DeviceConfigService {
   static final DeviceConfigService instance = DeviceConfigService._();
   DeviceConfigService._();
 
-  static const _keyEsp32Ip = 'esp32_ip';
+  static const _keyEsp32Ip  = 'esp32_ip';
   static const _keyEsp32Port = 'esp32_port';
-  static const _defaultIp = '';
-  static const _defaultPort = 81;
+  static const _keyAiIp    = 'ai_server_ip';
+  static const _keyAiPort   = 'ai_server_port';
 
-  String _esp32Ip = _defaultIp;
-  int _esp32Port = _defaultPort;
+  String _esp32Ip  = '';
+  int    _esp32Port = 81;
+  String _aiIp     = '';   // empty = chưa cấu hình
+  int    _aiPort   = 5000;
 
-  String get esp32Ip => _esp32Ip;
-  int get esp32Port => _esp32Port;
+  // ESP32
+  String get esp32Ip     => _esp32Ip;
+  int    get esp32Port   => _esp32Port;
+  bool   get hasEsp32Ip  => _esp32Ip.isNotEmpty;
   String get esp32BaseUrl => 'http://$_esp32Ip:$_esp32Port';
-  String get streamUrl => '$esp32BaseUrl/stream';
-  String get captureUrl => '$esp32BaseUrl/capture';
+  String get streamUrl    => '$esp32BaseUrl/stream';
+  String get captureUrl   => '$esp32BaseUrl/capture';
 
-  bool get hasIp => _esp32Ip.isNotEmpty;
+  // AI Server
+  String get aiIp      => _aiIp;
+  int    get aiPort    => _aiPort;
+  bool   get hasAiIp   => _aiIp.isNotEmpty;
+  String get aiBaseUrl => 'http://$_aiIp:$_aiPort';
 
-  // Gọi 1 lần khi app khởi động
   Future<void> init() async {
     final prefs = await SharedPreferences.getInstance();
-    final savedPort = prefs.getInt(_keyEsp32Port) ?? _defaultPort;
-    // Clear stale config from old version that used port 8080
-    if (savedPort == 8080) {
+
+    // ESP32 — clear stale port=8080 from old version
+    final savedEsp32Port = prefs.getInt(_keyEsp32Port) ?? 81;
+    if (savedEsp32Port == 8080) {
       await prefs.remove(_keyEsp32Ip);
       await prefs.remove(_keyEsp32Port);
-      _esp32Ip = _defaultIp;
-      _esp32Port = _defaultPort;
+      _esp32Ip   = '';
+      _esp32Port = 81;
     } else {
-      _esp32Ip = prefs.getString(_keyEsp32Ip) ?? _defaultIp;
-      _esp32Port = savedPort;
+      _esp32Ip   = prefs.getString(_keyEsp32Ip) ?? '';
+      _esp32Port = savedEsp32Port;
     }
+
+    // AI Server
+    _aiIp   = prefs.getString(_keyAiIp)  ?? '';
+    _aiPort = prefs.getInt(_keyAiPort)   ?? 5000;
   }
 
-  // Gọi khi BLE provisioning thành công và nhận được IP mới
-  Future<void> saveEsp32Ip(String ip, {int port = _defaultPort}) async {
-    _esp32Ip = ip;
+  Future<void> saveEsp32Ip(String ip, {int port = 81}) async {
+    _esp32Ip   = ip;
     _esp32Port = port;
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_keyEsp32Ip, ip);
     await prefs.setInt(_keyEsp32Port, port);
   }
 
-  // Reset về default
+  Future<void> saveAiServer(String ip, {int port = 5000}) async {
+    _aiIp   = ip;
+    _aiPort = port;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_keyAiIp, ip);
+    await prefs.setInt(_keyAiPort, port);
+  }
+
   Future<void> reset() async {
-    _esp32Ip = _defaultIp;
-    _esp32Port = _defaultPort;
+    _esp32Ip = ''; _esp32Port = 81;
+    _aiIp    = ''; _aiPort    = 5000;
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_keyEsp32Ip);
     await prefs.remove(_keyEsp32Port);
+    await prefs.remove(_keyAiIp);
+    await prefs.remove(_keyAiPort);
   }
 }
