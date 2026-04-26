@@ -1,17 +1,15 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:flutter/foundation.dart';
-import '../config/app_config.dart';
 
 class RenderAPIService {
   static final RenderAPIService _instance = RenderAPIService._internal();
   factory RenderAPIService() => _instance;
   RenderAPIService._internal();
 
-  final String _baseUrl = AppConfig.renderApiUrl;
+  final String _baseUrl = '';
   final Map<String, String> _headers = {
     'Content-Type': 'application/json',
-    'X-API-Key': AppConfig.renderApiKey,
   };
 
   Future<List<Map<String, dynamic>>> getMembers() async {
