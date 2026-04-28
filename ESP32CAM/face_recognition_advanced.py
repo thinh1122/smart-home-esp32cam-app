@@ -520,6 +520,35 @@ def stream_relay():
     )
 
 # ============================================================
+# mDNS BROADCAST — Flutter tự tìm server, không cần nhập IP
+# ============================================================
+def start_mdns(port=5000):
+    """Broadcast service _smarthome._tcp trên LAN để Flutter tự discover."""
+    try:
+        from zeroconf import Zeroconf, ServiceInfo
+        import socket
+        zc = Zeroconf()
+        local_ip = socket.gethostbyname(socket.gethostname())
+        info = ServiceInfo(
+            "_smarthome._tcp.local.",
+            "SmartHome AI Server._smarthome._tcp.local.",
+            addresses=[socket.inet_aton(local_ip)],
+            port=port,
+            properties={'version': '1.0', 'esp32': ESP32_IP},
+        )
+        zc.register_service(info)
+        print(f"📡 mDNS broadcast: smarthome.local → {local_ip}:{port}")
+        print(f"   Flutter sẽ tự tìm thấy server — không cần nhập IP thủ công")
+        return zc, info
+    except ImportError:
+        print("⚠️ zeroconf chưa cài — chạy: pip install zeroconf")
+        print("   Flutter cần nhập IP thủ công trong Devices → Cấu hình AI Server")
+        return None, None
+    except Exception as e:
+        print(f"⚠️ mDNS error: {e}")
+        return None, None
+
+# ============================================================
 # MAIN
 # ============================================================
 if __name__ == '__main__':
@@ -535,11 +564,17 @@ if __name__ == '__main__':
     # Recognition: dùng relay_frame thay vì gọi thêm kết nối tới ESP32
     threading.Thread(target=recognition_worker, daemon=True).start()
 
+    # mDNS: Flutter tự tìm thấy server trên LAN, không cần nhập IP
+    zc, mdns_info = start_mdns(port=5000)
+
     print(f"🚀 AI Server: http://0.0.0.0:5000")
-    print(f"📹 MJPEG relay: http://<PC_IP>:5000/stream  (Flutter trỏ vào đây)")
-    print(f"🔗 ESP32 source: http://{ESP32_IP}:{ESP32_PORT}/stream  (1 kết nối duy nhất)")
+    print(f"📹 MJPEG relay: http://<PC_IP>:5000/stream")
+    print(f"🔗 ESP32 source: http://{ESP32_IP}:{ESP32_PORT}/stream")
     print(f"📡 MQTT: {MQTT_BROKER}:{MQTT_PORT}")
 
-    app.run(host='0.0.0.0', port=5000, debug=False, threaded=True)
-
-    app.run(host='0.0.0.0', port=5000, debug=False, threaded=True)
+    try:
+        app.run(host='0.0.0.0', port=5000, debug=False, threaded=True)
+    finally:
+        if zc and mdns_info:
+            zc.unregister_service(mdns_info)
+            zc.close()
