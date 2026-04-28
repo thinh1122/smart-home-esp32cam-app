@@ -44,6 +44,7 @@ dependencies:
   permission_handler: ^11.3.0  # For camera/bluetooth permissions
   shared_preferences: ^2.3.2  # Lưu ESP32 IP động
   flutter_local_notifications: ^17.2.2  # Push notification người lạ
+  bonsoir: ^5.1.6  # mDNS discovery — tự tìm Python server trên LAN
 
 dev_dependencies:
   flutter_test:

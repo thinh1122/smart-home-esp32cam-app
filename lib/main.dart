@@ -1,25 +1,26 @@
 import 'package:flutter/material.dart';
 import 'core/theme/app_theme.dart';
 import 'core/services/mqtt_service.dart';
-import 'core/services/render_api_service.dart';
 import 'core/services/device_config_service.dart';
 import 'core/services/notification_service.dart';
+import 'core/services/server_discovery_service.dart';
 import 'presentation/screens/main_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Load saved ESP32 IP trước khi app render
+  // Load saved IP (ESP32 + AI server) trước khi app render
   await DeviceConfigService.instance.init();
 
   // Khởi tạo notification channels
   await NotificationService.instance.init();
 
-  // Connect MQTT in background — don't block app startup
+  // Connect MQTT in background
   MQTTService().connect().then((ok) => debugPrint(ok ? 'MQTT connected' : 'MQTT offline'));
 
-  // Check backend health in background
-  RenderAPIService().checkHealth().then((ok) => debugPrint(ok ? 'Backend online' : 'Backend offline'));
+  // Tự động tìm Python AI server trên LAN qua mDNS (background)
+  // Nếu tìm thấy sẽ tự lưu IP — không cần nhập thủ công
+  ServerDiscoveryService.instance.startDiscovery();
 
   runApp(const SmartHomeApp());
 }
