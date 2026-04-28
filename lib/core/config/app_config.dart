@@ -10,7 +10,7 @@ class AppConfig {
   static bool   get hasAiServer => DeviceConfigService.instance.hasAiIp;
 
   // Stream URL — Python relay, ESP32 chỉ có 1 kết nối
-  static String get streamUrl => '$aiBaseUrl/stream';
+  static String get streamUrl => hasAiServer ? '$aiBaseUrl/stream' : '';
 
   // ESP32 direct — Python server dùng nội bộ
   static String get captureUrl => DeviceConfigService.instance.captureUrl;

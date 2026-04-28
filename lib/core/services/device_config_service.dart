@@ -26,7 +26,7 @@ class DeviceConfigService {
   String get aiIp      => _aiIp;
   int    get aiPort    => _aiPort;
   bool   get hasAiIp   => _aiIp.isNotEmpty;
-  String get aiBaseUrl => 'http://$_aiIp:$_aiPort';
+  String get aiBaseUrl => hasAiIp ? 'http://$_aiIp:$_aiPort' : '';
 
   Future<void> init() async {
     final prefs = await SharedPreferences.getInstance();

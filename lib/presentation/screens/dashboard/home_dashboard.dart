@@ -269,24 +269,15 @@ class _HomeDashboardState extends State<HomeDashboard> {
               child: Stack(
                 fit: StackFit.expand,
                 children: [
-                  Mjpeg(
-                    key: _streamKey,
-                    isLive: true,
-                    stream: AppConfig.streamUrl,
-                    error: (ctx, err, stack) => Container(
-                      color: AppColors.cardElevated,
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          const Icon(Icons.videocam_off_rounded, color: Colors.white30, size: 40),
-                          const SizedBox(height: 8),
-                          Text('Camera offline\n${AppConfig.streamUrl}',
-                              textAlign: TextAlign.center,
-                              style: const TextStyle(color: Colors.white30, fontSize: 11)),
-                        ],
-                      ),
-                    ),
-                  ),
+                  if (AppConfig.streamUrl.isNotEmpty)
+                    Mjpeg(
+                      key: _streamKey,
+                      isLive: true,
+                      stream: AppConfig.streamUrl,
+                      error: (ctx, err, stack) => _buildCamOffline(),
+                    )
+                  else
+                    _buildCamOffline(),
                   Positioned(
                     bottom: 0, left: 0, right: 0,
                     child: Container(
@@ -322,6 +313,20 @@ class _HomeDashboardState extends State<HomeDashboard> {
         left: left ? const BorderSide(color: Colors.white60, width: 2) : BorderSide.none,
         right: !left ? const BorderSide(color: Colors.white60, width: 2) : BorderSide.none,
       ),
+    ),
+  );
+
+  Widget _buildCamOffline() => Container(
+    color: AppColors.cardElevated,
+    child: const Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Icon(Icons.videocam_off_rounded, color: Colors.white30, size: 40),
+        SizedBox(height: 8),
+        Text('Camera offline\nVào Devices → Cấu hình AI Server',
+            textAlign: TextAlign.center,
+            style: TextStyle(color: Colors.white30, fontSize: 11)),
+      ],
     ),
   );
 

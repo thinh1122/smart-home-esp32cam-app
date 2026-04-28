@@ -219,7 +219,7 @@ class _FrontDoorCamScreenState extends State<FrontDoorCamScreen> {
             fit: StackFit.expand,
             children: [
               // MJPEG stream — key forces full rebuild on reconnect
-              if (_isStreamActive)
+              if (_isStreamActive && AppConfig.streamUrl.isNotEmpty)
                 Mjpeg(
                   key: _streamKey,
                   isLive: true,
