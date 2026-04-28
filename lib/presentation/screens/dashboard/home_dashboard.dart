@@ -4,6 +4,7 @@ import 'package:flutter_mjpeg/flutter_mjpeg.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/config/app_config.dart';
 import '../../../core/services/mqtt_service.dart';
+import '../../../core/services/device_config_service.dart';
 
 class HomeDashboard extends StatefulWidget {
   const HomeDashboard({super.key});
@@ -27,10 +28,16 @@ class _HomeDashboardState extends State<HomeDashboard> {
   void initState() {
     super.initState();
     _connectMQTT();
+    DeviceConfigService.instance.aiServerNotifier.addListener(_onAiServerChanged);
+  }
+
+  void _onAiServerChanged() {
+    if (mounted) setState(() => _streamKey = UniqueKey());
   }
 
   @override
   void dispose() {
+    DeviceConfigService.instance.aiServerNotifier.removeListener(_onAiServerChanged);
     _deviceSub?.cancel();
     super.dispose();
   }

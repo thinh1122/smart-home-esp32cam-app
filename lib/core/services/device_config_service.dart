@@ -1,8 +1,12 @@
+import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class DeviceConfigService {
   static final DeviceConfigService instance = DeviceConfigService._();
   DeviceConfigService._();
+
+  /// Fires whenever the AI server IP/port is saved — listen to force stream reload
+  final aiServerNotifier = ValueNotifier<String>('');
 
   static const _keyEsp32Ip  = 'esp32_ip';
   static const _keyEsp32Port = 'esp32_port';
@@ -62,6 +66,7 @@ class DeviceConfigService {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_keyAiIp, ip);
     await prefs.setInt(_keyAiPort, port);
+    aiServerNotifier.value = aiBaseUrl; // notify listeners
   }
 
   Future<void> reset() async {

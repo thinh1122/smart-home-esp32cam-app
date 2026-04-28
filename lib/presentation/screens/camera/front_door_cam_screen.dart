@@ -39,10 +39,16 @@ class _FrontDoorCamScreenState extends State<FrontDoorCamScreen> {
     super.initState();
     _loadData();
     _listenMQTT();
+    DeviceConfigService.instance.aiServerNotifier.addListener(_onAiServerChanged);
+  }
+
+  void _onAiServerChanged() {
+    if (mounted) setState(() => _streamKey = UniqueKey());
   }
 
   @override
   void dispose() {
+    DeviceConfigService.instance.aiServerNotifier.removeListener(_onAiServerChanged);
     _mqttFaceSub?.cancel();
     super.dispose();
   }
