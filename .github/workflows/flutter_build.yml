@@ -1,40 +1,78 @@
-name: Flutter Build
+name: Flutter Build (Android & iOS)
 
 on:
   push:
-    branches: [ "main", "master" ]
+    branches: [master, main]
   pull_request:
-    branches: [ "main", "master" ]
+    branches: [master, main]
 
 jobs:
-  build:
+  build-android:
+    name: Build Android APK
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: FLUTTER
 
     steps:
-    - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
 
-    - name: Set up Java
-      uses: actions/setup-java@v4
-      with:
-        distribution: 'temurin'
-        java-version: '17'
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
 
-    - name: Set up Flutter
-      uses: subosito/flutter-action@v2
-      with:
-        flutter-version: '3.19.0' # Adjust based on user's flutter version if known
-        channel: 'stable'
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.27.4'
+          channel: stable
+          cache: true
 
-    - name: Install dependencies
-      working-directory: ./FLUTTER
-      run: flutter pub get
+      - name: Get dependencies
+        run: flutter pub get
 
-    - name: Build APK
-      working-directory: ./FLUTTER
-      run: flutter build apk --release
+      - name: Build APK
+        run: flutter build apk --release --no-tree-shake-icons
 
-    - name: Upload APK
-      uses: actions/upload-artifact@v4
-      with:
-        name: release-apk
-        path: FLUTTER/build/app/outputs/flutter-apk/app-release.apk
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-release-apk
+          path: FLUTTER/build/app/outputs/flutter-apk/app-release.apk
+
+  build-ios:
+    name: Build iOS (no codesign)
+    runs-on: macos-latest
+    defaults:
+      run:
+        working-directory: FLUTTER
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.27.4'
+          channel: stable
+          cache: true
+
+      - name: Get dependencies
+        run: flutter pub get
+
+      - name: Build iOS (no codesign)
+        run: flutter build ios --release --no-codesign
+
+      - name: Zip Runner.app
+        run: |
+          cd build/ios/iphoneos
+          zip -r Runner.zip Runner.app
+
+      - name: Upload iOS build
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-release-no-codesign
+          path: FLUTTER/build/ios/iphoneos/Runner.zip
