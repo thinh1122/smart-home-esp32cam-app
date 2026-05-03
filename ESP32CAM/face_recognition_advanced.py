@@ -33,8 +33,26 @@ IMG_DIR  = "img"
 TEMP_DIR = "temp"
 DB_FILE  = "members.db"
 
-ESP32_IP   = "192.168.1.35"   # <-- cập nhật IP ESP32 tại đây (hoặc qua /config)
+ESP32_IP   = "192.168.1.27"   # default — bị ghi đè bởi esp32_config.json nếu có
 ESP32_PORT = 81
+CONFIG_FILE = "esp32_config.json"
+
+def _load_esp32_config():
+    global ESP32_IP, ESP32_PORT
+    try:
+        with open(CONFIG_FILE, 'r') as f:
+            data = json.load(f)
+            ESP32_IP   = data.get('ip', ESP32_IP)
+            ESP32_PORT = data.get('port', ESP32_PORT)
+            print(f"📂 Loaded ESP32 config: {ESP32_IP}:{ESP32_PORT}")
+    except FileNotFoundError:
+        pass
+
+def _save_esp32_config():
+    with open(CONFIG_FILE, 'w') as f:
+        json.dump({'ip': ESP32_IP, 'port': ESP32_PORT}, f)
+
+_load_esp32_config()  # đọc config ngay khi import
 
 MQTT_BROKER = "broker.hivemq.com"
 MQTT_PORT   = 1883
@@ -58,19 +76,34 @@ relay_frame       = None      # JPEG bytes của frame mới nhất
 relay_lock        = threading.Lock()
 relay_subscribers = set()     # set of threading.Event, mỗi client 1 event
 relay_sub_lock    = threading.Lock()
+relay_restart_event = threading.Event()  # set khi ESP32 IP thay đổi
+
+relay_connected = False  # trạng thái kết nối relay hiện tại
 
 def relay_worker():
     """Kéo MJPEG stream từ ESP32, lưu frame mới nhất, báo hiệu cho tất cả subscribers."""
-    global relay_frame
+    global relay_frame, relay_connected
     print("📹 MJPEG relay worker started")
+    retry_delay = 1  # bắt đầu retry sau 1s, tăng dần tối đa 8s
     while True:
         url = f"http://{ESP32_IP}:{ESP32_PORT}/stream"
+        print(f"📹 Relay connecting: {url}")
+        relay_restart_event.clear()
         try:
-            r = requests.get(url, stream=True, timeout=10)
+            r = requests.get(url, stream=True, timeout=5)
+            relay_connected = True
+            retry_delay = 1  # reset khi kết nối thành công
+            print(f"✅ Relay connected to ESP32")
             buf = b''
-            for chunk in r.iter_content(chunk_size=4096):
+            for chunk in r.iter_content(chunk_size=16384):
+                if relay_restart_event.is_set():
+                    print("🔄 Relay restarting with new ESP32 IP...")
+                    r.close()
+                    break
                 buf += chunk
-                # Tìm JPEG boundaries
+                if len(buf) > 524288:
+                    start = buf.rfind(b'\xff\xd8')
+                    buf = buf[start:] if start != -1 else b''
                 while True:
                     start = buf.find(b'\xff\xd8')
                     end   = buf.find(b'\xff\xd9')
@@ -80,12 +113,16 @@ def relay_worker():
                     buf = buf[end + 2:]
                     with relay_lock:
                         relay_frame = jpg
-                    # Báo hiệu tất cả client đang chờ
                     with relay_sub_lock:
                         for ev in relay_subscribers:
                             ev.set()
         except Exception as e:
-            print(f"⚠️ Relay worker error: {e} — retry in 2s")
+            relay_connected = False
+            print(f"⚠️ Relay error: {e} — retry in {retry_delay}s")
+            time.sleep(retry_delay)
+            retry_delay = min(retry_delay * 2, 8)  # exponential backoff tối đa 8s
+            continue
+        time.sleep(0.5)
             time.sleep(2)
 
 # ============================================================
@@ -453,16 +490,29 @@ def delete_member():
     load_known_faces()
     return jsonify({'message': 'Deleted'}), 200
 
-@app.route('/config', methods=['POST'])
+@app.route('/config', methods=['POST', 'GET'])
 def set_config():
     """Flutter gọi sau BLE provisioning để cập nhật IP ESP32"""
     global ESP32_IP, ESP32_PORT
-    data = request.json
-    if 'ip' in data:
+    # Hỗ trợ cả JSON body (POST) và query params (GET) để dễ test trên browser
+    if request.method == 'POST' and request.is_json:
+        data = request.json
+    else:
+        data = request.args
+
+    changed = False
+    if 'ip' in data and data['ip']:
         ESP32_IP = data['ip']
+        changed = True
     if 'port' in data:
         ESP32_PORT = int(data['port'])
-    print(f"📡 ESP32 config updated: {ESP32_IP}:{ESP32_PORT}")
+        changed = True
+
+    if changed:
+        print(f"📡 ESP32 config updated: {ESP32_IP}:{ESP32_PORT} — restarting relay...")
+        _save_esp32_config()       # lưu để lần sau không cần nhập lại
+        relay_restart_event.set()  # báo relay worker reconnect với IP mới
+
     return jsonify({'ip': ESP32_IP, 'port': ESP32_PORT}), 200
 
 @app.route('/status', methods=['GET'])
@@ -488,16 +538,25 @@ def health():
 # ============================================================
 RELAY_BOUNDARY = b'--frame'
 
+STREAM_FPS = 10   # FPS gửi về Flutter — tăng nếu mạng tốt, giảm nếu lag
+STREAM_INTERVAL = 1.0 / STREAM_FPS
+
 @app.route('/stream')
 def stream_relay():
     def generate():
         ev = threading.Event()
         with relay_sub_lock:
             relay_subscribers.add(ev)
+        last_sent = 0.0
         try:
             while True:
-                ev.wait(timeout=5)   # chờ frame mới tối đa 5s
+                ev.wait(timeout=5)
                 ev.clear()
+                # Giới hạn FPS — bỏ qua frame nếu chưa đến lượt
+                now = time.time()
+                if now - last_sent < STREAM_INTERVAL:
+                    continue
+                last_sent = now
                 with relay_lock:
                     jpg = relay_frame
                 if jpg is None:

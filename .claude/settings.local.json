@@ -6,7 +6,10 @@
       "Bash(dir \"C:\\\\Users\\\\DELL\\\\AndroidStudioProjects\\\\DATN\\\\FLUTTER\\\\lib\\\\core\\\\services\")",
       "Bash(git add *)",
       "Bash(git commit -m ' *)",
-      "Bash(git push *)"
+      "Bash(git push *)",
+      "Bash(xargs grep *)",
+      "Bash(git restore *)",
+      "Bash(git commit --allow-empty -m ' *)"
     ]
   }
 }
