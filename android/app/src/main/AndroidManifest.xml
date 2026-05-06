@@ -19,8 +19,10 @@
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     
     <!-- Storage for saving images and logs -->
-    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
-    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
+    <!-- Android 13+ (API 33+) dùng quyền riêng cho ảnh -->
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
     
     <!-- Wake lock for background MQTT -->
     <uses-permission android:name="android.permission.WAKE_LOCK" />
