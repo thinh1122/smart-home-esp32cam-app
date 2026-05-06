@@ -410,8 +410,8 @@ class _HomeDashboardState extends State<HomeDashboard> {
           const SizedBox(height: 12),
           ClipRRect(
             borderRadius: BorderRadius.circular(24),
-            child: SizedBox(
-              height: 190, width: double.infinity,
+            child: AspectRatio(
+              aspectRatio: 4 / 3,
               child: Stack(
                 fit: StackFit.expand,
                 children: [
@@ -439,10 +439,6 @@ class _HomeDashboardState extends State<HomeDashboard> {
                       ),
                     ),
                   ),
-                  Positioned(top: 12, left: 12, child: _cornerMark(top: true, left: true)),
-                  Positioned(top: 12, right: 12, child: _cornerMark(top: true, left: false)),
-                  Positioned(bottom: 12, left: 12, child: _cornerMark(top: false, left: true)),
-                  Positioned(bottom: 12, right: 12, child: _cornerMark(top: false, left: false)),
                 ],
               ),
             ),
@@ -452,17 +448,6 @@ class _HomeDashboardState extends State<HomeDashboard> {
     );
   }
 
-  Widget _cornerMark({required bool top, required bool left}) => Container(
-    width: 16, height: 16,
-    decoration: BoxDecoration(
-      border: Border(
-        top: top ? const BorderSide(color: Colors.white60, width: 2) : BorderSide.none,
-        bottom: !top ? const BorderSide(color: Colors.white60, width: 2) : BorderSide.none,
-        left: left ? const BorderSide(color: Colors.white60, width: 2) : BorderSide.none,
-        right: !left ? const BorderSide(color: Colors.white60, width: 2) : BorderSide.none,
-      ),
-    ),
-  );
 
   Widget _buildCamOffline() => Container(
     color: AppColors.cardElevated,
