@@ -1,10 +1,10 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:flutter_mjpeg/flutter_mjpeg.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/config/app_config.dart';
 import '../../../core/services/mqtt_service.dart';
 import '../../../core/services/device_config_service.dart';
+import '../../widgets/live_mjpeg.dart';
 
 class HomeDashboard extends StatefulWidget {
   const HomeDashboard({super.key});
@@ -21,6 +21,7 @@ class _HomeDashboardState extends State<HomeDashboard> {
   bool _doorLocked = true;
   bool _mqttConnected = false;
   Key _streamKey = UniqueKey();
+  Timer? _retryTimer;
 
   StreamSubscription? _deviceSub;
 
@@ -28,17 +29,18 @@ class _HomeDashboardState extends State<HomeDashboard> {
   void initState() {
     super.initState();
     _connectMQTT();
-    DeviceConfigService.instance.aiServerNotifier.addListener(_onAiServerChanged);
+    DeviceConfigService.instance.aiServerNotifier.addListener(_onEsp32Changed);
   }
 
-  void _onAiServerChanged() {
+  void _onEsp32Changed() {
     if (mounted) setState(() => _streamKey = UniqueKey());
   }
 
   @override
   void dispose() {
-    DeviceConfigService.instance.aiServerNotifier.removeListener(_onAiServerChanged);
+    DeviceConfigService.instance.aiServerNotifier.removeListener(_onEsp32Changed);
     _deviceSub?.cancel();
+    _retryTimer?.cancel();
     super.dispose();
   }
 
@@ -62,7 +64,20 @@ class _HomeDashboardState extends State<HomeDashboard> {
     });
   }
 
-  void _reconnectStream() => setState(() => _streamKey = UniqueKey());
+  void _reconnectStream() {
+    _retryTimer?.cancel();
+    setState(() => _streamKey = UniqueKey());
+  }
+
+  void _onStreamError() {
+    if (!mounted) return;
+    _retryTimer?.cancel();
+    _retryTimer = Timer(const Duration(seconds: 3), () {
+      if (mounted && AppConfig.streamUrl.isNotEmpty) {
+        setState(() => _streamKey = UniqueKey());
+      }
+    });
+  }
 
   // Toggle đèn → publish MQTT
   void _toggleLight(String room, bool v) {
@@ -277,11 +292,13 @@ class _HomeDashboardState extends State<HomeDashboard> {
                 fit: StackFit.expand,
                 children: [
                   if (AppConfig.streamUrl.isNotEmpty)
-                    Mjpeg(
+                    LiveMjpeg(
                       key: _streamKey,
-                      isLive: true,
                       stream: AppConfig.streamUrl,
-                      error: (ctx, err, stack) => _buildCamOffline(),
+                      error: (ctx, err, stack) {
+                        WidgetsBinding.instance.addPostFrameCallback((_) => _onStreamError());
+                        return _buildCamOffline();
+                      },
                     )
                   else
                     _buildCamOffline(),
@@ -330,7 +347,7 @@ class _HomeDashboardState extends State<HomeDashboard> {
       children: [
         Icon(Icons.videocam_off_rounded, color: Colors.white30, size: 40),
         SizedBox(height: 8),
-        Text('Camera offline\nVào Devices → Cấu hình AI Server',
+        Text('Camera offline\nVào Devices → BLE WiFi Setup để kết nối ESP32',
             textAlign: TextAlign.center,
             style: TextStyle(color: Colors.white30, fontSize: 11)),
       ],
