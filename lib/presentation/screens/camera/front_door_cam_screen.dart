@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'dart:ui';
 import 'dart:async';
 import 'dart:convert';
-import 'package:flutter_mjpeg/flutter_mjpeg.dart';
+import '../../widgets/live_mjpeg.dart';
 import 'package:http/http.dart' as http;
 import '../../../core/config/app_config.dart';
 import '../../../core/theme/app_theme.dart';
@@ -27,6 +27,7 @@ class _FrontDoorCamScreenState extends State<FrontDoorCamScreen> {
   Key _streamKey = UniqueKey();
   bool _isStreamActive = true;
   bool _isStreamConnected = false;
+  Timer? _retryTimer;
 
   // Face result from MQTT (Python server publishes, Flutter just displays)
   List<Map<String, dynamic>> _recognizedFaces = [];
@@ -50,6 +51,7 @@ class _FrontDoorCamScreenState extends State<FrontDoorCamScreen> {
   void dispose() {
     DeviceConfigService.instance.aiServerNotifier.removeListener(_onAiServerChanged);
     _mqttFaceSub?.cancel();
+    _retryTimer?.cancel();
     super.dispose();
   }
 
@@ -101,9 +103,22 @@ class _FrontDoorCamScreenState extends State<FrontDoorCamScreen> {
   }
 
   void _reconnectStream() {
+    _retryTimer?.cancel();
     setState(() {
       _streamKey = UniqueKey();
       _isStreamConnected = false;
+    });
+  }
+
+  void _onStreamError() {
+    if (!mounted) return;
+    setState(() => _isStreamConnected = false);
+    // Tự retry sau 3 giây khi stream bị mất
+    _retryTimer?.cancel();
+    _retryTimer = Timer(const Duration(seconds: 3), () {
+      if (mounted && AppConfig.streamUrl.isNotEmpty) {
+        setState(() => _streamKey = UniqueKey());
+      }
     });
   }
 
@@ -226,14 +241,11 @@ class _FrontDoorCamScreenState extends State<FrontDoorCamScreen> {
             children: [
               // MJPEG stream — key forces full rebuild on reconnect
               if (_isStreamActive && AppConfig.streamUrl.isNotEmpty)
-                Mjpeg(
+                LiveMjpeg(
                   key: _streamKey,
-                  isLive: true,
                   stream: AppConfig.streamUrl,
                   error: (ctx, err, stack) {
-                    WidgetsBinding.instance.addPostFrameCallback((_) {
-                      if (mounted && _isStreamConnected) setState(() => _isStreamConnected = false);
-                    });
+                    WidgetsBinding.instance.addPostFrameCallback((_) => _onStreamError());
                     return _buildStreamError();
                   },
                 ),
