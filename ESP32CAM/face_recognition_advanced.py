@@ -189,10 +189,10 @@ def publish(topic, payload):
     return False
 
 # ============================================================
-# CAMERA — pull single JPEG từ ESP32 /capture (độc lập với stream Flutter)
+# CAMERA — gọi /capture trên ESP32 (JPEG tĩnh, độc lập với /stream Flutter)
+# ESP32 xử lý /stream và /capture trên 2 handler riêng không block nhau
 # ============================================================
 def capture_frame():
-    """Gọi /capture trên ESP32 — JPEG tĩnh, không ảnh hưởng stream Flutter."""
     try:
         url = f"http://{ESP32_IP}:{ESP32_PORT}/capture"
         r = requests.get(url, timeout=3)
@@ -671,7 +671,14 @@ if __name__ == '__main__':
     print(f"📡 MQTT: {MQTT_BROKER}:{MQTT_PORT}")
 
     try:
-        app.run(host='0.0.0.0', port=5000, debug=False, threaded=True)
+        try:
+            from waitress import serve
+            print("🚀 Running with waitress (production WSGI)")
+            serve(app, host='0.0.0.0', port=5000, threads=8)
+        except ImportError:
+            print("⚠️ waitress chưa cài — chạy: pip install waitress")
+            print("   Fallback: Flask dev server (có thể lag khi stream)")
+            app.run(host='0.0.0.0', port=5000, debug=False, threaded=True)
     finally:
         if zc and mdns_info:
             zc.unregister_service(mdns_info)
