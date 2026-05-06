@@ -195,13 +195,13 @@ bool initCamera() {
   cfg.pin_pwdn     = PWDN_GPIO_NUM;
   cfg.pin_reset    = RESET_GPIO_NUM;
 
-  cfg.xclk_freq_hz = 10000000;   // 10MHz XCLK — stable, lower power than 20MHz
+  cfg.xclk_freq_hz = 20000000;   // 20MHz — tốc độ cao hơn, FPS cao hơn
   cfg.pixel_format = PIXFORMAT_JPEG;
-  cfg.frame_size   = FRAMESIZE_QVGA;   // 320x240 — good balance
-  cfg.jpeg_quality = 15;               // 10=best, 63=worst; 15 ≈ 15-20KB/frame
-  cfg.fb_count     = 1;               // 1 buffer — less RAM, lower latency
-  cfg.fb_location  = psramFound() ? CAMERA_FB_IN_PSRAM : CAMERA_FB_IN_DRAM;
-  cfg.grab_mode    = CAMERA_GRAB_LATEST; // always get latest frame, discard stale
+  cfg.frame_size   = FRAMESIZE_QVGA;   // 320x240
+  cfg.jpeg_quality = 30;               // 30 ≈ 5-8KB/frame, đủ xem, nhỏ hơn ~3x
+  cfg.fb_count     = 2;               // 2 buffer — ESP32 capture liên tục, không chờ
+  cfg.fb_location  = CAMERA_FB_IN_PSRAM;
+  cfg.grab_mode    = CAMERA_GRAB_LATEST; // bỏ frame cũ, luôn lấy frame mới nhất
 
   if (esp_camera_init(&cfg) != ESP_OK) {
     Serial.println("❌ Camera init failed");
@@ -211,7 +211,7 @@ bool initCamera() {
   sensor_t* s = esp_camera_sensor_get();
   if (s) {
     s->set_framesize(s, FRAMESIZE_QVGA);
-    s->set_quality(s, 15);
+    s->set_quality(s, 30);
     s->set_brightness(s, 1);
     s->set_saturation(s, -1);   // lower saturation → smaller JPEG
     s->set_whitebal(s, 1);
@@ -370,7 +370,7 @@ void setup() {
   if (WiFi.status() == WL_CONNECTED) {
     if (initCamera()) {
       startCameraServer();
-      digitalWrite(LED_PIN, HIGH);  // LED on = streaming ready
+      digitalWrite(LED_PIN, LOW);   // tắt flash LED — GPIO4 là đèn flash, không dùng làm indicator
     }
   } else {
     initBLE();

@@ -1,3 +1,4 @@
+
 import sys
 import io
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
@@ -8,6 +9,7 @@ import numpy as np
 import os
 import sqlite3
 import threading
+import queue as _queue_module
 import requests
 from flask import Flask, jsonify, request
 from datetime import datetime
@@ -72,19 +74,18 @@ TOPIC_SYSTEM_LOG  = "home/system/log"
 # MJPEG RELAY — kéo 1 luồng từ ESP32, broadcast ra nhiều client
 # ESP32 chỉ chịu 1 kết nối stream → relay giải quyết vấn đề này
 # ============================================================
-relay_frame       = None      # JPEG bytes của frame mới nhất
-relay_lock        = threading.Lock()
-relay_subscribers = set()     # set of threading.Event, mỗi client 1 event
-relay_sub_lock    = threading.Lock()
-relay_restart_event = threading.Event()  # set khi ESP32 IP thay đổi
-
-relay_connected = False  # trạng thái kết nối relay hiện tại
+relay_frame     = None   # JPEG bytes mới nhất từ ESP32
+relay_lock      = threading.Lock()
+relay_subscribers = set()
+relay_sub_lock  = threading.Lock()
+relay_restart_event = threading.Event()
+relay_connected = False
 
 def relay_worker():
-    """Kéo MJPEG stream từ ESP32, lưu frame mới nhất, báo hiệu cho tất cả subscribers."""
+    """Kéo MJPEG stream từ ESP32, lưu frame mới nhất, notify subscribers."""
     global relay_frame, relay_connected
     print("📹 MJPEG relay worker started")
-    retry_delay = 1  # bắt đầu retry sau 1s, tăng dần tối đa 8s
+    retry_delay = 1
     while True:
         url = f"http://{ESP32_IP}:{ESP32_PORT}/stream"
         print(f"📹 Relay connecting: {url}")
@@ -92,15 +93,16 @@ def relay_worker():
         try:
             r = requests.get(url, stream=True, timeout=5)
             relay_connected = True
-            retry_delay = 1  # reset khi kết nối thành công
+            retry_delay = 1
             print(f"✅ Relay connected to ESP32")
             buf = b''
-            for chunk in r.iter_content(chunk_size=16384):
+            for chunk in r.iter_content(chunk_size=65536):
                 if relay_restart_event.is_set():
                     print("🔄 Relay restarting with new ESP32 IP...")
                     r.close()
                     break
                 buf += chunk
+                # Chỉ giữ frame mới nhất nếu buffer quá lớn
                 if len(buf) > 524288:
                     start = buf.rfind(b'\xff\xd8')
                     buf = buf[start:] if start != -1 else b''
@@ -120,10 +122,9 @@ def relay_worker():
             relay_connected = False
             print(f"⚠️ Relay error: {e} — retry in {retry_delay}s")
             time.sleep(retry_delay)
-            retry_delay = min(retry_delay * 2, 8)  # exponential backoff tối đa 8s
+            retry_delay = min(retry_delay * 2, 8)
             continue
         time.sleep(0.5)
-            time.sleep(2)
 
 # ============================================================
 # SHARED STATE
@@ -538,7 +539,7 @@ def health():
 # ============================================================
 RELAY_BOUNDARY = b'--frame'
 
-STREAM_FPS = 10   # FPS gửi về Flutter — tăng nếu mạng tốt, giảm nếu lag
+STREAM_FPS      = 15              # FPS gửi về Flutter
 STREAM_INTERVAL = 1.0 / STREAM_FPS
 
 @app.route('/stream')
@@ -552,7 +553,6 @@ def stream_relay():
             while True:
                 ev.wait(timeout=5)
                 ev.clear()
-                # Giới hạn FPS — bỏ qua frame nếu chưa đến lượt
                 now = time.time()
                 if now - last_sent < STREAM_INTERVAL:
                     continue
