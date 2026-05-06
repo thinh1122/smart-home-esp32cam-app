@@ -59,6 +59,9 @@ _load_esp32_config()  # đọc config ngay khi import
 MQTT_BROKER = "broker.hivemq.com"
 MQTT_PORT   = 1883
 
+# Bypass proxy hệ thống — requests tới ESP32 trên LAN không qua proxy
+_NO_PROXY = {"http": "", "https": ""}
+
 # Recognition tuning
 RECOGNITION_INTERVAL = 3.0    # giây giữa mỗi lần check
 STABLE_SECONDS       = 2.0    # giây mặt phải giữ yên trước khi nhận diện
@@ -91,7 +94,7 @@ def relay_worker():
         print(f"📹 Relay connecting: {url}")
         relay_restart_event.clear()
         try:
-            r = requests.get(url, stream=True, timeout=5)
+            r = requests.get(url, stream=True, timeout=5, proxies=_NO_PROXY)
             relay_connected = True
             retry_delay = 1
             print(f"✅ Relay connected to ESP32")
@@ -195,7 +198,7 @@ def publish(topic, payload):
 def capture_frame():
     try:
         url = f"http://{ESP32_IP}:{ESP32_PORT}/capture"
-        r = requests.get(url, timeout=3)
+        r = requests.get(url, timeout=3, proxies=_NO_PROXY)
         if r.status_code == 200 and r.content:
             arr = np.frombuffer(r.content, np.uint8)
             return cv2.imdecode(arr, cv2.IMREAD_COLOR)
@@ -331,11 +334,13 @@ def recognition_worker():
             print("🔄 Cooldown over — resuming recognition")
 
         # Lấy frame từ ESP32
+        print(f"📷 [AI] Gọi /capture từ ESP32...")
         frame = capture_frame()
         if frame is None:
-            print(f"📷 No frame from relay (relay_connected={relay_connected}) — waiting...")
+            print(f"❌ [AI] Không lấy được frame — kiểm tra ESP32 IP={ESP32_IP}:{ESP32_PORT}")
             rec_state['phase'] = 'idle'
             continue
+        print(f"✅ [AI] Có frame {frame.shape}")
 
         # Kiểm tra có chuyển động không
         if not detect_motion(frame):
