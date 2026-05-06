@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/config/app_config.dart';
@@ -23,7 +24,12 @@ class _HomeDashboardState extends State<HomeDashboard> {
   Key _streamKey = UniqueKey();
   Timer? _retryTimer;
 
+  // Trạng thái nhận diện khuôn mặt mới nhất từ MQTT
+  Map<String, dynamic>? _lastFaceEvent;
+  Timer? _faceEventClearTimer;
+
   StreamSubscription? _deviceSub;
+  StreamSubscription? _faceSub;
 
   @override
   void initState() {
@@ -40,7 +46,9 @@ class _HomeDashboardState extends State<HomeDashboard> {
   void dispose() {
     DeviceConfigService.instance.aiServerNotifier.removeListener(_onEsp32Changed);
     _deviceSub?.cancel();
+    _faceSub?.cancel();
     _retryTimer?.cancel();
+    _faceEventClearTimer?.cancel();
     super.dispose();
   }
 
@@ -60,6 +68,19 @@ class _HomeDashboardState extends State<HomeDashboard> {
         if (topic.contains('bedroom')) _bedroomLight = state == 'ON';
         if (topic.contains('kitchen')) _kitchenLight = state == 'ON';
         if (topic.contains('door')) _doorLocked = state == 'LOCKED';
+      });
+    });
+
+    // Lắng nghe MQTT nhận diện khuôn mặt
+    _faceSub = MQTTService().faceRecognitionStream.listen((event) {
+      if (!mounted) return;
+      final topic = event['topic'] as String;
+      final data = event['data'] as Map<String, dynamic>;
+      setState(() => _lastFaceEvent = {'topic': topic, ...data});
+      // Xóa thông báo sau 10 giây
+      _faceEventClearTimer?.cancel();
+      _faceEventClearTimer = Timer(const Duration(seconds: 10), () {
+        if (mounted) setState(() => _lastFaceEvent = null);
       });
     });
   }
@@ -209,8 +230,111 @@ class _HomeDashboardState extends State<HomeDashboard> {
           _buildStatChip(Icons.wifi_rounded, _mqttConnected ? AppColors.info : AppColors.textSecondary,
               _mqttConnected ? 'On' : 'Off', 'MQTT'),
           const SizedBox(width: 10),
-          _buildStatChip(Icons.eco_rounded, AppColors.climateColor, 'Eco', 'Năng lượng'),
+          _buildFaceChip(),
         ],
+      ),
+    );
+  }
+
+  Widget _buildFaceChip() {
+    final event = _lastFaceEvent;
+    final isStranger = event != null && event['topic'] == AppConfig.topicFaceAlert;
+    final isKnown    = event != null && event['topic'] == AppConfig.topicFaceResult && (event['matched'] as bool? ?? false);
+    final hasEvent   = isStranger || isKnown;
+
+    final color = isStranger ? AppColors.error : isKnown ? AppColors.success : AppColors.textSecondary;
+    final icon  = isStranger ? Icons.warning_amber_rounded : isKnown ? Icons.face_rounded : Icons.notifications_none_rounded;
+    final value = isStranger ? 'Lạ' : isKnown ? (event!['name'] as String? ?? 'OK') : '--';
+    final label = isStranger ? 'Cảnh báo' : isKnown ? 'Nhận diện' : 'Thông báo';
+
+    return Expanded(
+      child: GestureDetector(
+        onTap: hasEvent ? () => _showFaceEventDetail(event!) : null,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 300),
+          padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 10),
+          decoration: BoxDecoration(
+            color: hasEvent ? color.withOpacity(0.12) : AppColors.card,
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(
+              color: hasEvent ? color.withOpacity(0.4) : Colors.white.withOpacity(0.06),
+              width: hasEvent ? 1.5 : 1,
+            ),
+          ),
+          child: Column(
+            children: [
+              Icon(icon, color: color, size: 18),
+              const SizedBox(height: 6),
+              Text(
+                value,
+                style: TextStyle(color: hasEvent ? color : Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+              const SizedBox(height: 2),
+              Text(label, style: const TextStyle(color: AppColors.textSecondary, fontSize: 9)),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _showFaceEventDetail(Map<String, dynamic> event) {
+    final isStranger = event['topic'] == AppConfig.topicFaceAlert;
+    final name       = event['name'] as String? ?? 'Người lạ';
+    final conf       = event['confidence'] as double?;
+    final color      = isStranger ? AppColors.error : AppColors.success;
+    final icon       = isStranger ? Icons.warning_amber_rounded : Icons.check_circle_rounded;
+
+    showDialog(
+      context: context,
+      builder: (_) => BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 6, sigmaY: 6),
+        child: AlertDialog(
+          backgroundColor: AppColors.card,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(color: color.withOpacity(0.15), shape: BoxShape.circle),
+                child: Icon(icon, color: color, size: 40),
+              ),
+              const SizedBox(height: 16),
+              Text(
+                isStranger ? 'Phát hiện người lạ!' : 'Nhận diện thành công',
+                style: TextStyle(color: color, fontSize: 17, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 8),
+              Text(name, style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold)),
+              if (conf != null) ...[
+                const SizedBox(height: 6),
+                Text('Độ chính xác: ${(conf * 100).toStringAsFixed(0)}%',
+                    style: const TextStyle(color: AppColors.textSecondary, fontSize: 13)),
+              ],
+              if (!isStranger && event['role'] != null) ...[
+                const SizedBox(height: 6),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: AppColors.accentDim,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Text(event['role'] as String,
+                      style: const TextStyle(color: AppColors.accentLight, fontSize: 12, fontWeight: FontWeight.bold)),
+                ),
+              ],
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Đóng', style: TextStyle(color: AppColors.accentLight, fontWeight: FontWeight.bold)),
+            ),
+          ],
+        ),
       ),
     );
   }
