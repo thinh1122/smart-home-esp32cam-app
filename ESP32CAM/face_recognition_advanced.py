@@ -84,6 +84,10 @@ relay_sub_lock  = threading.Lock()
 relay_restart_event = threading.Event()
 relay_connected = False
 
+# Frame đã vẽ bounding box — Flutter hiển thị stream này
+annotated_frame      = None
+annotated_frame_lock = threading.Lock()
+
 def relay_worker():
     """Kéo MJPEG stream từ ESP32, lưu frame mới nhất, notify subscribers."""
     global relay_frame, relay_connected
@@ -207,6 +211,24 @@ def capture_frame():
     return None
 
 # ============================================================
+# ANNOTATED FRAME — vẽ bounding box, lưu để serve qua /stream_annotated
+# ============================================================
+def _draw_annotated(frame, faces, label=None):
+    """Vẽ box lên frame, encode JPEG, lưu vào annotated_frame."""
+    global annotated_frame
+    vis = frame.copy()
+    for face in faces:
+        x, y, w, h = face['bbox']
+        color = (0, 255, 0)  # xanh lá
+        cv2.rectangle(vis, (x, y), (x + w, y + h), color, 2)
+        if label:
+            cv2.putText(vis, label, (x, y - 8),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 2)
+    _, jpg = cv2.imencode('.jpg', vis, [cv2.IMWRITE_JPEG_QUALITY, 70])
+    with annotated_frame_lock:
+        annotated_frame = jpg.tobytes()
+
+# ============================================================
 # IMAGE PROCESSING
 # ============================================================
 mp_face = mp.solutions.face_detection
@@ -312,6 +334,27 @@ def match_frame(frame):
     return {'matched': False, 'name': 'Người lạ', 'confidence': round(best_score, 3), 'ts': int(time.time() * 1000)}
 
 # ============================================================
+# ANNOTATE WORKER — liên tục vẽ box lên relay frame để /stream_annotated mượt
+# ============================================================
+def annotate_worker():
+    """Đọc relay_frame liên tục, detect face, vẽ box, lưu vào annotated_frame."""
+    print("🎨 Annotate worker started")
+    while True:
+        with relay_lock:
+            jpg = relay_frame
+        if jpg is None:
+            time.sleep(0.05)
+            continue
+        arr = np.frombuffer(jpg, np.uint8)
+        frame = cv2.imdecode(arr, cv2.IMREAD_COLOR)
+        if frame is None:
+            time.sleep(0.05)
+            continue
+        faces = detect_faces(frame)
+        _draw_annotated(frame, faces, label=None)
+        time.sleep(1.0 / 10)  # 10 FPS
+
+# ============================================================
 # BACKGROUND RECOGNITION WORKER
 # Đây là trái tim của Cách B:
 # Python server tự pull frame, tự nhận diện, tự publish MQTT
@@ -370,6 +413,9 @@ def recognition_worker():
 
         print(f"👤 Face in frame (score={faces[0]['score']:.2f})")
 
+        # Vẽ bounding box xanh lên frame, lưu vào annotated_frame
+        _draw_annotated(frame, faces, label=None)
+
         # Bắt đầu đếm stable
         if rec_state['phase'] == 'idle':
             rec_state['phase'] = 'stabilizing'
@@ -421,6 +467,14 @@ def recognition_worker():
 
         rec_state['phase'] = 'cooldown'
         rec_state['last_result_time'] = now
+
+        # Vẽ lại box với label kết quả
+        final_frame = capture_frame()
+        if final_frame is not None:
+            label = result['name'] if result['matched'] else 'Nguoi la'
+            color_frame = final_frame.copy()
+            final_faces = detect_faces(color_frame)
+            _draw_annotated(color_frame, final_faces if final_faces else [], label=label)
 
         if result['matched']:
             print(f"✅ Recognized: {result['name']} ({result['confidence']*100:.0f}%)")
@@ -622,6 +676,33 @@ def stream_relay():
         mimetype='multipart/x-mixed-replace; boundary=frame',
     )
 
+@app.route('/stream_annotated')
+def stream_annotated():
+    """MJPEG stream với bounding box khuôn mặt — Flutter dùng cái này."""
+    def generate():
+        boundary = b'--frame\r\nContent-Type: image/jpeg\r\n'
+        while True:
+            with annotated_frame_lock:
+                jpg = annotated_frame
+            if jpg is None:
+                # Chưa có frame annotated, fallback về relay frame
+                with relay_lock:
+                    jpg_raw = relay_frame
+                if jpg_raw is not None:
+                    jpg = jpg_raw
+                else:
+                    time.sleep(0.1)
+                    continue
+            yield (boundary +
+                   b'Content-Length: ' + str(len(jpg)).encode() +
+                   b'\r\n\r\n' + jpg + b'\r\n')
+            time.sleep(1.0 / 10)  # 10 FPS
+
+    return app.response_class(
+        generate(),
+        mimetype='multipart/x-mixed-replace; boundary=frame',
+    )
+
 # ============================================================
 # mDNS BROADCAST — Flutter tự tìm server, không cần nhập IP
 # ============================================================
@@ -664,7 +745,10 @@ if __name__ == '__main__':
     # Relay: kéo 1 kết nối từ ESP32, broadcast ra nhiều client Flutter
     threading.Thread(target=relay_worker, daemon=True).start()
 
-    # Recognition: dùng relay_frame thay vì gọi thêm kết nối tới ESP32
+    # Annotate: liên tục vẽ bounding box lên relay frame
+    threading.Thread(target=annotate_worker, daemon=True).start()
+
+    # Recognition: gọi /capture để nhận diện, độc lập với stream
     threading.Thread(target=recognition_worker, daemon=True).start()
 
     # mDNS: Flutter tự tìm thấy server trên LAN, không cần nhập IP
