@@ -189,16 +189,19 @@ def publish(topic, payload):
     return False
 
 # ============================================================
-# CAMERA — pull single JPEG from ESP32
+# CAMERA — pull single JPEG từ ESP32 /capture (độc lập với stream Flutter)
 # ============================================================
 def capture_frame():
-    """Lấy frame mới nhất từ relay buffer (không tạo thêm kết nối tới ESP32)."""
-    with relay_lock:
-        jpg = relay_frame
-    if jpg is None:
-        return None
-    arr = np.frombuffer(jpg, np.uint8)
-    return cv2.imdecode(arr, cv2.IMREAD_COLOR)
+    """Gọi /capture trên ESP32 — JPEG tĩnh, không ảnh hưởng stream Flutter."""
+    try:
+        url = f"http://{ESP32_IP}:{ESP32_PORT}/capture"
+        r = requests.get(url, timeout=3)
+        if r.status_code == 200 and r.content:
+            arr = np.frombuffer(r.content, np.uint8)
+            return cv2.imdecode(arr, cv2.IMREAD_COLOR)
+    except Exception as e:
+        print(f"⚠️ capture_frame error: {e}")
+    return None
 
 # ============================================================
 # IMAGE PROCESSING
@@ -330,6 +333,7 @@ def recognition_worker():
         # Lấy frame từ ESP32
         frame = capture_frame()
         if frame is None:
+            print(f"📷 No frame from relay (relay_connected={relay_connected}) — waiting...")
             rec_state['phase'] = 'idle'
             continue
 
@@ -341,20 +345,31 @@ def recognition_worker():
                 rec_state['stable_start'] = None
             continue
 
-        # Kiểm tra có khuôn mặt không
-        faces = detect_faces(frame)
-        if not faces:
-            rec_state['phase'] = 'idle'
-            rec_state['stable_start'] = None
-            continue
-
         now = time.time()
+
+        # Khi đang stabilizing/recognizing thì bỏ qua motion check
+        # chỉ cần mặt vẫn còn trong frame
+        if rec_state['phase'] in ('stabilizing', 'recognizing'):
+            faces = detect_faces(frame)
+            if not faces:
+                print("🚫 Face lost during stabilize — reset")
+                rec_state['phase'] = 'idle'
+                rec_state['stable_start'] = None
+                continue
+        else:
+            print("🏃 Motion detected — checking for face...")
+            faces = detect_faces(frame)
+            if not faces:
+                print("🚫 No face detected")
+                continue
+
+        print(f"👤 Face in frame (score={faces[0]['score']:.2f})")
 
         # Bắt đầu đếm stable
         if rec_state['phase'] == 'idle':
             rec_state['phase'] = 'stabilizing'
             rec_state['stable_start'] = now
-            print(f"👤 Face detected — stabilizing for {STABLE_SECONDS}s...")
+            print(f"⏳ Stabilizing — giữ yên {STABLE_SECONDS}s...")
             continue
 
         if rec_state['phase'] == 'stabilizing':
