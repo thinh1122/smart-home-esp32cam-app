@@ -8,6 +8,7 @@
 #include "esp_http_server.h"
 #include <WiFi.h>
 #include <Preferences.h>
+#include <ESPmDNS.h>
 #include <BLEDevice.h>
 #include <BLEServer.h>
 #include <BLEUtils.h>
@@ -198,7 +199,7 @@ bool initCamera() {
   cfg.xclk_freq_hz = 20000000;   // 20MHz — tốc độ cao hơn, FPS cao hơn
   cfg.pixel_format = PIXFORMAT_JPEG;
   cfg.frame_size   = FRAMESIZE_QVGA;   // 320x240
-  cfg.jpeg_quality = 30;               // 30 ≈ 5-8KB/frame, đủ xem, nhỏ hơn ~3x
+  cfg.jpeg_quality = 12;               // 10=best, 63=worst; 12 = chất lượng cao, ~12-15KB/frame
   cfg.fb_count     = 2;               // 2 buffer — ESP32 capture liên tục, không chờ
   cfg.fb_location  = CAMERA_FB_IN_PSRAM;
   cfg.grab_mode    = CAMERA_GRAB_LATEST; // bỏ frame cũ, luôn lấy frame mới nhất
@@ -211,7 +212,7 @@ bool initCamera() {
   sensor_t* s = esp_camera_sensor_get();
   if (s) {
     s->set_framesize(s, FRAMESIZE_QVGA);
-    s->set_quality(s, 30);
+    s->set_quality(s, 12);
     s->set_brightness(s, 1);
     s->set_saturation(s, -1);   // lower saturation → smaller JPEG
     s->set_whitebal(s, 1);
@@ -337,12 +338,22 @@ void initBLE() {
 // FACTORY RESET (hold IO0 ≥ 3s)
 // ============================================================
 void checkFactoryReset() {
+  // Bỏ qua 5 giây đầu sau boot để tránh trigger khi upload firmware
+  if (millis() < 5000) return;
   if (digitalRead(BOOT_PIN) != LOW) return;
   unsigned long t = millis();
+  int blinks = 0;
   while (digitalRead(BOOT_PIN) == LOW) {
-    digitalWrite(LED_PIN, (millis() - t) / 500 % 2);
+    // Nhấp nháy LED mỗi 500ms, đếm số lần
+    if ((millis() - t) / 500 > blinks) {
+      blinks++;
+      digitalWrite(LED_PIN, blinks % 2);
+    }
+    // Phải giữ đủ 3 giây mới reset
     if (millis() - t >= 3000) {
       Serial.println("🗑️ Factory reset!");
+      // Nháy nhanh 5 lần báo hiệu trước khi reset
+      for (int i = 0; i < 10; i++) { digitalWrite(LED_PIN, i % 2); delay(100); }
       prefs.begin("wifi", false); prefs.clear(); prefs.end();
       delay(500);
       ESP.restart();
@@ -370,7 +381,15 @@ void setup() {
   if (WiFi.status() == WL_CONNECTED) {
     if (initCamera()) {
       startCameraServer();
-      digitalWrite(LED_PIN, LOW);   // tắt flash LED — GPIO4 là đèn flash, không dùng làm indicator
+      digitalWrite(LED_PIN, LOW);
+
+      // mDNS — Flutter tự tìm ESP32 trên LAN, không cần nhập IP thủ công
+      if (MDNS.begin("esp32cam")) {
+        MDNS.addService("_esp32cam", "_tcp", 81);
+        MDNS.addServiceTxt("_esp32cam", "_tcp", "stream", "/stream");
+        MDNS.addServiceTxt("_esp32cam", "_tcp", "capture", "/capture");
+        Serial.printf("📡 mDNS: esp32cam.local → %s:81\n", WiFi.localIP().toString().c_str());
+      }
     }
   } else {
     initBLE();

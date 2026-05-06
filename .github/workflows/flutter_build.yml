@@ -63,6 +63,24 @@ jobs:
       - name: Get dependencies
         run: flutter pub get
 
+      - name: Patch Info.plist — thêm quyền thư viện ảnh
+        run: |
+          PLIST="ios/Runner/Info.plist"
+          # Thêm NSPhotoLibraryUsageDescription nếu chưa có
+          if ! grep -q "NSPhotoLibraryUsageDescription" "$PLIST"; then
+            /usr/libexec/PlistBuddy -c \
+              "Add :NSPhotoLibraryUsageDescription string 'Cần truy cập thư viện ảnh để đăng ký khuôn mặt'" \
+              "$PLIST"
+            echo "✅ Patched NSPhotoLibraryUsageDescription"
+          fi
+          # Thêm NSCameraUsageDescription nếu chưa có
+          if ! grep -q "NSCameraUsageDescription" "$PLIST"; then
+            /usr/libexec/PlistBuddy -c \
+              "Add :NSCameraUsageDescription string 'Cần camera để chụp ảnh khuôn mặt'" \
+              "$PLIST"
+            echo "✅ Patched NSCameraUsageDescription"
+          fi
+
       - name: Build iOS (no codesign)
         run: flutter build ios --release --no-codesign
 
