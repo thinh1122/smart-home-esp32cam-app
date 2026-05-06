@@ -367,13 +367,37 @@ def recognition_worker():
         if rec_state['phase'] != 'recognizing':
             continue
 
-        # ── Nhận diện ──────────────────────────────────────
-        print("🔍 Recognizing...")
-        result = match_frame(frame)
+        # ── Chụp 3 frame cách nhau 0.5s, vote majority ─────
+        print("🔍 Capturing 3 frames for recognition...")
+        votes = []
+        for shot in range(3):
+            f = capture_frame()
+            if f is not None:
+                r = match_frame(f)
+                if r is not None:
+                    votes.append(r)
+                    print(f"  Shot {shot+1}: {'✅ ' + r['name'] if r['matched'] else '⚠️ Stranger'} ({r['confidence']*100:.0f}%)")
+            if shot < 2:
+                time.sleep(0.5)
 
-        if result is None:
+        if not votes:
             rec_state['phase'] = 'idle'
             continue
+
+        # Vote majority: đếm xem tên nào xuất hiện nhiều nhất
+        from collections import Counter
+        matched_votes = [v for v in votes if v['matched']]
+        if len(matched_votes) >= 2:
+            name_counts = Counter(v['name'] for v in matched_votes)
+            best_name = name_counts.most_common(1)[0][0]
+            best_vote = max((v for v in matched_votes if v['name'] == best_name),
+                            key=lambda v: v['confidence'])
+            result = best_vote
+        else:
+            # Người lạ: lấy vote có confidence cao nhất
+            result = max(votes, key=lambda v: v['confidence'])
+            result['matched'] = False
+            result['name'] = 'Người lạ'
 
         rec_state['phase'] = 'cooldown'
         rec_state['last_result_time'] = now

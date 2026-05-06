@@ -196,13 +196,13 @@ bool initCamera() {
   cfg.pin_pwdn     = PWDN_GPIO_NUM;
   cfg.pin_reset    = RESET_GPIO_NUM;
 
-  cfg.xclk_freq_hz = 20000000;   // 20MHz — tốc độ cao hơn, FPS cao hơn
+  cfg.xclk_freq_hz = 20000000;   // 20MHz
   cfg.pixel_format = PIXFORMAT_JPEG;
   cfg.frame_size   = FRAMESIZE_QVGA;   // 320x240
-  cfg.jpeg_quality = 12;               // 10=best, 63=worst; 12 = chất lượng cao, ~12-15KB/frame
-  cfg.fb_count     = 2;               // 2 buffer — ESP32 capture liên tục, không chờ
+  cfg.jpeg_quality = 8;               // 8=rất nét, 63=worst
+  cfg.fb_count     = 2;
   cfg.fb_location  = CAMERA_FB_IN_PSRAM;
-  cfg.grab_mode    = CAMERA_GRAB_LATEST; // bỏ frame cũ, luôn lấy frame mới nhất
+  cfg.grab_mode    = CAMERA_GRAB_LATEST;
 
   if (esp_camera_init(&cfg) != ESP_OK) {
     Serial.println("❌ Camera init failed");
@@ -212,7 +212,7 @@ bool initCamera() {
   sensor_t* s = esp_camera_sensor_get();
   if (s) {
     s->set_framesize(s, FRAMESIZE_QVGA);
-    s->set_quality(s, 12);
+    s->set_quality(s, 8);
     s->set_brightness(s, 1);
     s->set_saturation(s, -1);   // lower saturation → smaller JPEG
     s->set_whitebal(s, 1);
@@ -335,27 +335,21 @@ void initBLE() {
 }
 
 // ============================================================
-// FACTORY RESET (hold IO0 ≥ 3s)
+// FACTORY RESET (hold IO0 ≥ 1s)
 // ============================================================
 void checkFactoryReset() {
   // Bỏ qua 5 giây đầu sau boot để tránh trigger khi upload firmware
   if (millis() < 5000) return;
   if (digitalRead(BOOT_PIN) != LOW) return;
   unsigned long t = millis();
-  int blinks = 0;
+  // Chờ đủ 1 giây
   while (digitalRead(BOOT_PIN) == LOW) {
-    // Nhấp nháy LED mỗi 500ms, đếm số lần
-    if ((millis() - t) / 500 > blinks) {
-      blinks++;
-      digitalWrite(LED_PIN, blinks % 2);
-    }
-    // Phải giữ đủ 3 giây mới reset
-    if (millis() - t >= 3000) {
+    if (millis() - t >= 1000) {
       Serial.println("🗑️ Factory reset!");
-      // Nháy nhanh 5 lần báo hiệu trước khi reset
-      for (int i = 0; i < 10; i++) { digitalWrite(LED_PIN, i % 2); delay(100); }
+      // Nháy 3 lần báo hiệu
+      for (int i = 0; i < 6; i++) { digitalWrite(LED_PIN, i % 2); delay(150); }
       prefs.begin("wifi", false); prefs.clear(); prefs.end();
-      delay(500);
+      delay(300);
       ESP.restart();
     }
   }
