@@ -23,9 +23,9 @@ class DeviceConfigService {
   int    get esp32Port   => _esp32Port;
   bool   get hasEsp32Ip  => _esp32Ip.isNotEmpty;
   String get esp32BaseUrl => 'http://$_esp32Ip:$_esp32Port';
-  // Nếu AI server online → dùng relay (Python kéo 1 conn từ ESP32, broadcast ra N client)
-  // Nếu không → trực tiếp ESP32 (chỉ 1 client được xem cùng lúc)
-  String get streamUrl    => hasAiIp ? '$aiBaseUrl/stream' : '$esp32BaseUrl/stream';
+  // Flutter luôn lấy stream thẳng từ ESP32
+  // Python dùng /capture riêng để nhận diện — không tranh kết nối stream
+  String get streamUrl    => '$esp32BaseUrl/stream';
   String get captureUrl   => '$esp32BaseUrl/capture';
 
   // AI Server
