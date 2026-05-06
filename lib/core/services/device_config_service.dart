@@ -23,8 +23,8 @@ class DeviceConfigService {
   int    get esp32Port   => _esp32Port;
   bool   get hasEsp32Ip  => _esp32Ip.isNotEmpty;
   String get esp32BaseUrl => 'http://$_esp32Ip:$_esp32Port';
-  // Flutter luôn lấy stream thẳng từ ESP32
-  // Python dùng /capture riêng để nhận diện — không tranh kết nối stream
+  // Flutter luôn lấy thẳng từ ESP32 — mượt nhất
+  // Python dùng /capture riêng để nhận diện, không đụng tới stream
   String get streamUrl    => '$esp32BaseUrl/stream';
   String get captureUrl   => '$esp32BaseUrl/capture';
 
