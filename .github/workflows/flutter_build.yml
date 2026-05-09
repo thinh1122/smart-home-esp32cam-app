@@ -80,13 +80,15 @@ jobs:
       - name: Build iOS (no codesign)
         run: flutter build ios --release --no-codesign
 
-      - name: Zip Runner.app
+      - name: Package as .ipa (sideload-ready)
         run: |
+          mkdir -p build/ios/iphoneos/Payload
+          cp -r build/ios/iphoneos/Runner.app build/ios/iphoneos/Payload/
           cd build/ios/iphoneos
-          zip -r Runner.zip Runner.app
+          zip -r SmartHome.ipa Payload
 
-      - name: Upload iOS build
+      - name: Upload iOS IPA
         uses: actions/upload-artifact@v4
         with:
-          name: ios-release-no-codesign
-          path: FLUTTER/build/ios/iphoneos/Runner.zip
+          name: ios-sideload-ipa
+          path: FLUTTER/build/ios/iphoneos/SmartHome.ipa
