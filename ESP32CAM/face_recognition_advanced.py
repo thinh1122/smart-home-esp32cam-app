@@ -71,6 +71,7 @@ COOLDOWN_SECONDS     = 10.0   # không nhận diện lại trong n giây sau khi
 # MQTT topics — phải khớp với AppConfig trong Flutter
 TOPIC_FACE_RESULT = "home/face_recognition/result"
 TOPIC_FACE_ALERT  = "home/face_recognition/alert"
+TOPIC_FACE_BOX    = "home/face_recognition/bbox"   # tọa độ box để Flutter vẽ overlay
 TOPIC_SYSTEM_LOG  = "home/system/log"
 
 # ============================================================
@@ -334,27 +335,6 @@ def match_frame(frame):
     return {'matched': False, 'name': 'Người lạ', 'confidence': round(best_score, 3), 'ts': int(time.time() * 1000)}
 
 # ============================================================
-# ANNOTATE WORKER — liên tục vẽ box lên relay frame để /stream_annotated mượt
-# ============================================================
-def annotate_worker():
-    """Đọc relay_frame liên tục, detect face, vẽ box, lưu vào annotated_frame."""
-    print("🎨 Annotate worker started")
-    while True:
-        with relay_lock:
-            jpg = relay_frame
-        if jpg is None:
-            time.sleep(0.05)
-            continue
-        arr = np.frombuffer(jpg, np.uint8)
-        frame = cv2.imdecode(arr, cv2.IMREAD_COLOR)
-        if frame is None:
-            time.sleep(0.05)
-            continue
-        faces = detect_faces(frame)
-        _draw_annotated(frame, faces, label=None)
-        time.sleep(1.0 / 10)  # 10 FPS
-
-# ============================================================
 # BACKGROUND RECOGNITION WORKER
 # Đây là trái tim của Cách B:
 # Python server tự pull frame, tự nhận diện, tự publish MQTT
@@ -413,8 +393,14 @@ def recognition_worker():
 
         print(f"👤 Face in frame (score={faces[0]['score']:.2f})")
 
-        # Vẽ bounding box xanh lên frame, lưu vào annotated_frame
-        _draw_annotated(frame, faces, label=None)
+        # Publish tọa độ bbox để Flutter vẽ overlay
+        x, y, w, h = faces[0]['bbox']
+        fh, fw = frame.shape[:2]
+        publish(TOPIC_FACE_BOX, {
+            'x': round(x / fw, 4), 'y': round(y / fh, 4),
+            'w': round(w / fw, 4), 'h': round(h / fh, 4),
+            'ts': int(time.time() * 1000),
+        })
 
         # Bắt đầu đếm stable
         if rec_state['phase'] == 'idle':
@@ -433,24 +419,24 @@ def recognition_worker():
         if rec_state['phase'] != 'recognizing':
             continue
 
-        # ── Chụp 3 frame cách nhau 0.5s, vote majority ─────
-        print("🔍 Capturing 3 frames for recognition...")
+        # ── Chụp 2 frame cách nhau 0.5s, cả 2 phải đồng thuận ─────
+        print("🔍 Capturing 2 frames for recognition...")
         votes = []
-        for shot in range(3):
+        for shot in range(2):
             f = capture_frame()
             if f is not None:
                 r = match_frame(f)
                 if r is not None:
                     votes.append(r)
                     print(f"  Shot {shot+1}: {'✅ ' + r['name'] if r['matched'] else '⚠️ Stranger'} ({r['confidence']*100:.0f}%)")
-            if shot < 2:
+            if shot < 1:
                 time.sleep(0.5)
 
         if not votes:
             rec_state['phase'] = 'idle'
             continue
 
-        # Vote majority: đếm xem tên nào xuất hiện nhiều nhất
+        # Cả 2 frame đều matched cùng tên → xác nhận
         from collections import Counter
         matched_votes = [v for v in votes if v['matched']]
         if len(matched_votes) >= 2:
@@ -467,14 +453,6 @@ def recognition_worker():
 
         rec_state['phase'] = 'cooldown'
         rec_state['last_result_time'] = now
-
-        # Vẽ lại box với label kết quả
-        final_frame = capture_frame()
-        if final_frame is not None:
-            label = result['name'] if result['matched'] else 'Nguoi la'
-            color_frame = final_frame.copy()
-            final_faces = detect_faces(color_frame)
-            _draw_annotated(color_frame, final_faces if final_faces else [], label=label)
 
         if result['matched']:
             print(f"✅ Recognized: {result['name']} ({result['confidence']*100:.0f}%)")
