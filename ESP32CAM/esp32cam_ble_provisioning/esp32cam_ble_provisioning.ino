@@ -228,6 +228,12 @@ bool initCamera() {
 // ============================================================
 // WIFI
 // ============================================================
+// Static IP — ESP32 luôn dùng IP này, không bị DHCP đổi khi restart
+static const IPAddress STATIC_IP(192, 168,   1, 200);
+static const IPAddress GATEWAY  (192, 168,   1,   1);
+static const IPAddress SUBNET   (255, 255, 255,   0);
+static const IPAddress DNS1     (  8,   8,   8,   8);
+
 void loadAndConnect() {
   prefs.begin("wifi", true);
   String ssid = prefs.getString("ssid", "");
@@ -238,8 +244,9 @@ void loadAndConnect() {
 
   Serial.println("📂 Saved WiFi: " + ssid);
   WiFi.mode(WIFI_STA);
+  WiFi.config(STATIC_IP, GATEWAY, SUBNET, DNS1);
   WiFi.begin(ssid.c_str(), pass.c_str());
-  WiFi.setSleep(false);  // disable WiFi power save → stable stream
+  WiFi.setSleep(false);
 
   Serial.print("🔌 Connecting");
   for (int i = 0; i < 20 && WiFi.status() != WL_CONNECTED; i++) {
@@ -256,6 +263,7 @@ void loadAndConnect() {
 
 bool connectWiFi(const String& ssid, const String& pass) {
   WiFi.mode(WIFI_STA);
+  WiFi.config(STATIC_IP, GATEWAY, SUBNET, DNS1);
   WiFi.begin(ssid.c_str(), pass.c_str());
   WiFi.setSleep(false);
 
