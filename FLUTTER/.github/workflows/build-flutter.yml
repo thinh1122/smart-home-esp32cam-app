@@ -1,0 +1,116 @@
+name: Build Flutter App
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  build-android:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Java
+      uses: actions/setup-java@v4
+      with:
+        distribution: 'zulu'
+        java-version: '17'
+        
+    - name: Setup Flutter
+      uses: subosito/flutter-action@v2
+      with:
+        flutter-version: '3.24.3'
+        channel: 'stable'
+        
+    - name: Get dependencies
+      run: flutter pub get
+      
+    - name: Build APK
+      run: flutter build apk --release
+      
+    - name: Upload APK artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: android-apk
+        path: build/app/outputs/flutter-apk/*.apk
+
+  build-ios:
+    runs-on: macos-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Flutter
+      uses: subosito/flutter-action@v2
+      with:
+        flutter-version: '3.24.3'
+        channel: 'stable'
+        
+    - name: Get dependencies
+      run: flutter pub get
+      
+    - name: Build iOS (no signing)
+      run: flutter build ios --release --no-codesign
+      
+    - name: Create IPA
+      run: |
+        mkdir -p build/ios/ipa
+        cd build/ios/iphoneos
+        mkdir Payload
+        cp -r Runner.app Payload/
+        zip -r ../ipa/SmartHome.ipa Payload/
+        
+    - name: Upload IPA artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: ios-ipa
+        path: build/ios/ipa/*.ipa
+
+  create-release:
+    needs: [build-android, build-ios]
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+    
+    steps:
+    - name: Download all artifacts
+      uses: actions/download-artifact@v4
+      
+    - name: Create Release
+      id: create_release
+      uses: softprops/action-gh-release@v2
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: v${{ github.run_number }}
+        name: Smart Home App v${{ github.run_number }}
+        body: |
+          🏠 **Smart Home ESP32-CAM App**
+          
+          **Features:**
+          - 📱 Face Recognition with ESP32-CAM
+          - 🔐 Bluetooth WiFi Provisioning  
+          - 📡 MQTT Real-time Communication
+          - 🎯 Smart Door Control
+          - 📊 Activity Monitoring
+          
+          **Downloads:**
+          - **Android APK**: Direct install on Android devices
+          - **iOS IPA**: For sideloading (requires developer account)
+          
+          **Installation:**
+          1. Download APK for Android or IPA for iOS
+          2. For iOS: Use Sideloadly to install on device
+          3. Grant camera and location permissions
+          
+          Built on: ${{ github.sha }}
+        draft: false
+        prerelease: false
+        files: |
+          android-apk/*.apk
+          ios-ipa/SmartHome.ipa
