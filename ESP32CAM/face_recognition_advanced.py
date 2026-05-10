@@ -75,65 +75,6 @@ TOPIC_FACE_BOX    = "home/face_recognition/bbox"   # tọa độ box để Flutt
 TOPIC_SYSTEM_LOG  = "home/system/log"
 
 # ============================================================
-# MJPEG RELAY — kéo 1 luồng từ ESP32, broadcast ra nhiều client
-# ESP32 chỉ chịu 1 kết nối stream → relay giải quyết vấn đề này
-# ============================================================
-relay_frame     = None   # JPEG bytes mới nhất từ ESP32
-relay_lock      = threading.Lock()
-relay_subscribers = set()
-relay_sub_lock  = threading.Lock()
-relay_restart_event = threading.Event()
-relay_connected = False
-
-# Frame đã vẽ bounding box — Flutter hiển thị stream này
-annotated_frame      = None
-annotated_frame_lock = threading.Lock()
-
-def relay_worker():
-    """Kéo MJPEG stream từ ESP32, lưu frame mới nhất, notify subscribers."""
-    global relay_frame, relay_connected
-    print("📹 MJPEG relay worker started")
-    retry_delay = 1
-    while True:
-        url = f"http://{ESP32_IP}:{ESP32_PORT}/stream"
-        print(f"📹 Relay connecting: {url}")
-        relay_restart_event.clear()
-        try:
-            r = requests.get(url, stream=True, timeout=5, proxies=_NO_PROXY)
-            relay_connected = True
-            retry_delay = 1
-            print(f"✅ Relay connected to ESP32")
-            buf = b''
-            for chunk in r.iter_content(chunk_size=65536):
-                if relay_restart_event.is_set():
-                    print("🔄 Relay restarting with new ESP32 IP...")
-                    r.close()
-                    break
-                buf += chunk
-                # Chỉ giữ frame mới nhất nếu buffer quá lớn
-                if len(buf) > 524288:
-                    start = buf.rfind(b'\xff\xd8')
-                    buf = buf[start:] if start != -1 else b''
-                while True:
-                    start = buf.find(b'\xff\xd8')
-                    end   = buf.find(b'\xff\xd9')
-                    if start == -1 or end == -1 or end < start:
-                        break
-                    jpg = buf[start:end + 2]
-                    buf = buf[end + 2:]
-                    with relay_lock:
-                        relay_frame = jpg
-                    with relay_sub_lock:
-                        for ev in relay_subscribers:
-                            ev.set()
-        except Exception as e:
-            relay_connected = False
-            print(f"⚠️ Relay error: {e} — retry in {retry_delay}s")
-            time.sleep(retry_delay)
-            retry_delay = min(retry_delay * 2, 8)
-            continue
-        time.sleep(0.5)
-
 # ============================================================
 # SHARED STATE
 # ============================================================
@@ -586,9 +527,8 @@ def set_config():
         changed = True
 
     if changed:
-        print(f"📡 ESP32 config updated: {ESP32_IP}:{ESP32_PORT} — restarting relay...")
-        _save_esp32_config()       # lưu để lần sau không cần nhập lại
-        relay_restart_event.set()  # báo relay worker reconnect với IP mới
+        print(f"📡 ESP32 config updated: {ESP32_IP}:{ESP32_PORT}")
+        _save_esp32_config()
 
     return jsonify({'ip': ESP32_IP, 'port': ESP32_PORT}), 200
 
@@ -611,76 +551,6 @@ def health():
 # ============================================================
 # MJPEG RELAY ENDPOINT
 # Flutter kết nối vào đây — relay phân phối lại cho nhiều client
-# ESP32 chỉ có đúng 1 kết nối stream (từ relay_worker)
-# ============================================================
-RELAY_BOUNDARY = b'--frame'
-
-STREAM_FPS      = 15              # FPS gửi về Flutter
-STREAM_INTERVAL = 1.0 / STREAM_FPS
-
-@app.route('/stream')
-def stream_relay():
-    def generate():
-        ev = threading.Event()
-        with relay_sub_lock:
-            relay_subscribers.add(ev)
-        last_sent = 0.0
-        try:
-            while True:
-                ev.wait(timeout=5)
-                ev.clear()
-                now = time.time()
-                if now - last_sent < STREAM_INTERVAL:
-                    continue
-                last_sent = now
-                with relay_lock:
-                    jpg = relay_frame
-                if jpg is None:
-                    continue
-                yield (
-                    RELAY_BOUNDARY +
-                    b'\r\nContent-Type: image/jpeg\r\nContent-Length: ' +
-                    str(len(jpg)).encode() +
-                    b'\r\n\r\n' + jpg + b'\r\n'
-                )
-        except GeneratorExit:
-            pass
-        finally:
-            with relay_sub_lock:
-                relay_subscribers.discard(ev)
-
-    return app.response_class(
-        generate(),
-        mimetype='multipart/x-mixed-replace; boundary=frame',
-    )
-
-@app.route('/stream_annotated')
-def stream_annotated():
-    """MJPEG stream với bounding box khuôn mặt — Flutter dùng cái này."""
-    def generate():
-        boundary = b'--frame\r\nContent-Type: image/jpeg\r\n'
-        while True:
-            with annotated_frame_lock:
-                jpg = annotated_frame
-            if jpg is None:
-                # Chưa có frame annotated, fallback về relay frame
-                with relay_lock:
-                    jpg_raw = relay_frame
-                if jpg_raw is not None:
-                    jpg = jpg_raw
-                else:
-                    time.sleep(0.1)
-                    continue
-            yield (boundary +
-                   b'Content-Length: ' + str(len(jpg)).encode() +
-                   b'\r\n\r\n' + jpg + b'\r\n')
-            time.sleep(1.0 / 10)  # 10 FPS
-
-    return app.response_class(
-        generate(),
-        mimetype='multipart/x-mixed-replace; boundary=frame',
-    )
-
 # ============================================================
 # mDNS BROADCAST — Flutter tự tìm server, không cần nhập IP
 # ============================================================
