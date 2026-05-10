@@ -148,31 +148,51 @@ static esp_err_t status_handler(httpd_req_t* req) {
 }
 
 // ============================================================
-// CAMERA SERVER
+// CAMERA SERVER — 2 server riêng: port 81 stream, port 80 capture/status
 // ============================================================
+static httpd_handle_t httpd2 = nullptr;  // server port 80
+
 void startCameraServer() {
-  httpd_config_t cfg = HTTPD_DEFAULT_CONFIG();
-  cfg.server_port      = 81;
-  cfg.ctrl_port        = 32768;
-  cfg.max_uri_handlers = 8;
-  cfg.stack_size       = 8192;
-  cfg.max_open_sockets = 4;
-  cfg.lru_purge_enable = true;
-  cfg.recv_wait_timeout  = 10;
-  cfg.send_wait_timeout  = 10;
+  // Server 1: port 81 — chỉ /stream, max 1 socket (dành trọn cho Flutter)
+  httpd_config_t cfg1 = HTTPD_DEFAULT_CONFIG();
+  cfg1.server_port      = 81;
+  cfg1.ctrl_port        = 32768;
+  cfg1.max_uri_handlers = 2;
+  cfg1.stack_size       = 8192;
+  cfg1.max_open_sockets = 1;
+  cfg1.lru_purge_enable = true;
+  cfg1.recv_wait_timeout  = 10;
+  cfg1.send_wait_timeout  = 10;
 
-  httpd_uri_t uris[] = {
-    { .uri = "/stream",  .method = HTTP_GET, .handler = stream_handler,  .user_ctx = nullptr },
-    { .uri = "/capture", .method = HTTP_GET, .handler = capture_handler, .user_ctx = nullptr },
-    { .uri = "/status",  .method = HTTP_GET, .handler = status_handler,  .user_ctx = nullptr },
-  };
+  httpd_uri_t streamUri = { .uri = "/stream", .method = HTTP_GET, .handler = stream_handler, .user_ctx = nullptr };
 
-  if (httpd_start(&httpd, &cfg) == ESP_OK) {
-    for (auto& u : uris) httpd_register_uri_handler(httpd, &u);
+  if (httpd_start(&httpd, &cfg1) == ESP_OK) {
+    httpd_register_uri_handler(httpd, &streamUri);
     Serial.printf("✅ Stream: http://%s:81/stream\n", WiFi.localIP().toString().c_str());
-    Serial.printf("✅ Capture: http://%s:81/capture\n", WiFi.localIP().toString().c_str());
   } else {
-    Serial.println("❌ HTTP server failed");
+    Serial.println("❌ Stream server failed");
+  }
+
+  // Server 2: port 80 — /capture và /status cho Python AI
+  httpd_config_t cfg2 = HTTPD_DEFAULT_CONFIG();
+  cfg2.server_port      = 80;
+  cfg2.ctrl_port        = 32769;
+  cfg2.max_uri_handlers = 4;
+  cfg2.stack_size       = 4096;
+  cfg2.max_open_sockets = 2;
+  cfg2.lru_purge_enable = true;
+  cfg2.recv_wait_timeout  = 5;
+  cfg2.send_wait_timeout  = 5;
+
+  httpd_uri_t captureUri = { .uri = "/capture", .method = HTTP_GET, .handler = capture_handler, .user_ctx = nullptr };
+  httpd_uri_t statusUri  = { .uri = "/status",  .method = HTTP_GET, .handler = status_handler,  .user_ctx = nullptr };
+
+  if (httpd_start(&httpd2, &cfg2) == ESP_OK) {
+    httpd_register_uri_handler(httpd2, &captureUri);
+    httpd_register_uri_handler(httpd2, &statusUri);
+    Serial.printf("✅ Capture: http://%s:80/capture\n", WiFi.localIP().toString().c_str());
+  } else {
+    Serial.println("❌ Capture server failed");
   }
 }
 

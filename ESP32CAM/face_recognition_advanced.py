@@ -142,25 +142,19 @@ def publish(topic, payload):
 # ESP32 xử lý /stream và /capture trên 2 handler riêng không block nhau
 # ============================================================
 def capture_frame():
-    """Lấy 1 JPEG từ /stream của ESP32 rồi đóng ngay — không block Flutter lâu."""
-    try:
-        url = f"http://{ESP32_IP}:{ESP32_PORT}/stream"
-        r = requests.get(url, stream=True, timeout=4, proxies=_NO_PROXY)
-        buf = b''
-        for chunk in r.iter_content(chunk_size=4096):
-            buf += chunk
-            start = buf.find(b'\xff\xd8')
-            end   = buf.find(b'\xff\xd9')
-            if start != -1 and end != -1 and end > start:
-                jpg = buf[start:end + 2]
-                r.close()
-                arr = np.frombuffer(jpg, np.uint8)
-                return cv2.imdecode(arr, cv2.IMREAD_COLOR)
-            if len(buf) > 131072:  # giới hạn 128KB, tránh treo
-                break
-        r.close()
-    except Exception as e:
-        print(f"⚠️ capture_frame error: {e}")
+    """Lấy JPEG từ /capture ESP32 port 80 (server riêng, không tranh với stream port 81)."""
+    url = f"http://{ESP32_IP}:80/capture"
+    for attempt in range(3):
+        try:
+            r = requests.get(url, timeout=4, proxies=_NO_PROXY)
+            if r.status_code == 200 and r.content:
+                arr = np.frombuffer(r.content, np.uint8)
+                frame = cv2.imdecode(arr, cv2.IMREAD_COLOR)
+                if frame is not None:
+                    return frame
+        except Exception as e:
+            print(f"⚠️ capture_frame attempt {attempt+1}/3: {e}")
+            time.sleep(0.5)
     return None
 
 # ============================================================
