@@ -63,7 +63,7 @@ MQTT_PORT   = 1883
 _NO_PROXY = {"http": "", "https": ""}
 
 # Recognition tuning
-RECOGNITION_INTERVAL = 1.0    # giây giữa mỗi lần check
+RECOGNITION_INTERVAL = 3.0    # giây giữa mỗi lần check (thưa hơn → Flutter ít bị gián đoạn)
 STABLE_SECONDS       = 1.5    # giây mặt phải giữ yên trước khi nhận diện
 MATCH_THRESHOLD      = 0.50   # độ tương đồng tối thiểu để coi là khớp
 COOLDOWN_SECONDS     = 8.0    # không nhận diện lại trong n giây sau khi đã nhận
@@ -142,12 +142,23 @@ def publish(topic, payload):
 # ESP32 xử lý /stream và /capture trên 2 handler riêng không block nhau
 # ============================================================
 def capture_frame():
+    """Lấy 1 JPEG từ /stream của ESP32 rồi đóng ngay — không block Flutter lâu."""
     try:
-        url = f"http://{ESP32_IP}:{ESP32_PORT}/capture"
-        r = requests.get(url, timeout=3, proxies=_NO_PROXY)
-        if r.status_code == 200 and r.content:
-            arr = np.frombuffer(r.content, np.uint8)
-            return cv2.imdecode(arr, cv2.IMREAD_COLOR)
+        url = f"http://{ESP32_IP}:{ESP32_PORT}/stream"
+        r = requests.get(url, stream=True, timeout=4, proxies=_NO_PROXY)
+        buf = b''
+        for chunk in r.iter_content(chunk_size=4096):
+            buf += chunk
+            start = buf.find(b'\xff\xd8')
+            end   = buf.find(b'\xff\xd9')
+            if start != -1 and end != -1 and end > start:
+                jpg = buf[start:end + 2]
+                r.close()
+                arr = np.frombuffer(jpg, np.uint8)
+                return cv2.imdecode(arr, cv2.IMREAD_COLOR)
+            if len(buf) > 131072:  # giới hạn 128KB, tránh treo
+                break
+        r.close()
     except Exception as e:
         print(f"⚠️ capture_frame error: {e}")
     return None
