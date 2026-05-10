@@ -63,10 +63,10 @@ MQTT_PORT   = 1883
 _NO_PROXY = {"http": "", "https": ""}
 
 # Recognition tuning
-RECOGNITION_INTERVAL = 3.0    # giây giữa mỗi lần check
-STABLE_SECONDS       = 2.0    # giây mặt phải giữ yên trước khi nhận diện
+RECOGNITION_INTERVAL = 1.0    # giây giữa mỗi lần check
+STABLE_SECONDS       = 1.5    # giây mặt phải giữ yên trước khi nhận diện
 MATCH_THRESHOLD      = 0.50   # độ tương đồng tối thiểu để coi là khớp
-COOLDOWN_SECONDS     = 10.0   # không nhận diện lại trong n giây sau khi đã nhận
+COOLDOWN_SECONDS     = 8.0    # không nhận diện lại trong n giây sau khi đã nhận
 
 # MQTT topics — phải khớp với AppConfig trong Flutter
 TOPIC_FACE_RESULT = "home/face_recognition/result"
@@ -719,12 +719,6 @@ if __name__ == '__main__':
     init_db()
     load_known_faces()
     init_mqtt()
-
-    # Relay: kéo 1 kết nối từ ESP32, broadcast ra nhiều client Flutter
-    threading.Thread(target=relay_worker, daemon=True).start()
-
-    # Annotate: liên tục vẽ bounding box lên relay frame
-    threading.Thread(target=annotate_worker, daemon=True).start()
 
     # Recognition: gọi /capture để nhận diện, độc lập với stream
     threading.Thread(target=recognition_worker, daemon=True).start()
