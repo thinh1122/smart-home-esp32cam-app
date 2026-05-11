@@ -20,11 +20,6 @@ import time
 import json
 import paho.mqtt.client as mqtt
 
-try:
-    from skimage.metrics import structural_similarity as ssim
-    HAS_SSIM = True
-except ImportError:
-    HAS_SSIM = False
 
 app = Flask(__name__)
 
@@ -231,19 +226,20 @@ def extract_template(frame, bbox):
     crop = frame[y:y+h, x:x+w]
     if crop.size == 0:
         return None
-    enh = enhance(cv2.resize(crop, (160, 160)))
-    gray = cv2.GaussianBlur(cv2.cvtColor(enh, cv2.COLOR_BGR2GRAY), (3, 3), 0)
-    return cv2.equalizeHist(gray)
+    # Resize cố định 64x64, enhance, flatten thành vector
+    resized = cv2.resize(crop, (64, 64))
+    enh = enhance(resized)
+    gray = cv2.equalizeHist(cv2.cvtColor(enh, cv2.COLOR_BGR2GRAY))
+    vec = gray.flatten().astype(np.float32)
+    norm = np.linalg.norm(vec)
+    return vec / norm if norm > 0 else vec
 
 def compare_templates(t1, t2):
     if t1 is None or t2 is None:
         return 0.0
-    _, s1, _, _ = cv2.minMaxLoc(cv2.matchTemplate(t1, t2, cv2.TM_CCOEFF_NORMED))
-    s2 = ssim(t1, t2) if HAS_SSIM else s1
-    h1 = cv2.calcHist([t1], [0], None, [256], [0, 256])
-    h2 = cv2.calcHist([t2], [0], None, [256], [0, 256])
-    s3 = cv2.compareHist(h1, h2, cv2.HISTCMP_CORREL)
-    return max(0.0, min(1.0, s1 * 0.4 + s2 * 0.4 + s3 * 0.2))
+    # Cosine similarity — cùng shape vì cùng flatten từ 64x64
+    score = float(np.dot(t1, t2))
+    return max(0.0, min(1.0, score))
 
 def match_frame(frame):
     """So khớp 1 frame với database. Trả về dict kết quả."""
