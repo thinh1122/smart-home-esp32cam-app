@@ -65,7 +65,7 @@ _NO_PROXY = {"http": "", "https": ""}
 # Recognition tuning
 RECOGNITION_INTERVAL = 1.0    # giây giữa mỗi lần check — 1 frame/1s
 STABLE_SECONDS       = 1.5    # giây mặt phải giữ yên trước khi nhận diện
-MATCH_THRESHOLD      = 0.50   # độ tương đồng tối thiểu để coi là khớp
+MATCH_THRESHOLD      = 0.35   # độ tương đồng tối thiểu để coi là khớp
 COOLDOWN_SECONDS     = 8.0    # không nhận diện lại trong n giây sau khi đã nhận
 
 # MQTT topics — phải khớp với AppConfig trong Flutter
