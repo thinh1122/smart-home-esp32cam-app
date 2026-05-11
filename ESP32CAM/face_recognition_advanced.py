@@ -211,15 +211,21 @@ def detect_faces(frame):
     return faces
 
 def enhance(image):
-    pil = Image.fromarray(cv2.cvtColor(image, cv2.COLOR_BGR2RGB))
-    pil = ImageEnhance.Brightness(pil).enhance(1.3)
-    pil = ImageEnhance.Contrast(pil).enhance(1.2)
-    pil = ImageEnhance.Sharpness(pil).enhance(1.2)
-    bgr = cv2.cvtColor(np.array(pil), cv2.COLOR_RGB2BGR)
-    lab = cv2.cvtColor(bgr, cv2.COLOR_BGR2LAB)
+    # CLAHE trên LAB để tăng sáng thích nghi — hiệu quả với ảnh tối từ ESP32
+    lab = cv2.cvtColor(image, cv2.COLOR_BGR2LAB)
     l, a, b = cv2.split(lab)
-    l = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8)).apply(l)
-    return cv2.cvtColor(cv2.merge([l, a, b]), cv2.COLOR_LAB2BGR)
+    # Kiểm tra độ sáng trung bình — nếu tối thì tăng mạnh hơn
+    mean_l = float(np.mean(l))
+    clip = 4.0 if mean_l < 80 else 2.5
+    l = cv2.createCLAHE(clipLimit=clip, tileGridSize=(4, 4)).apply(l)
+    bgr = cv2.cvtColor(cv2.merge([l, a, b]), cv2.COLOR_LAB2BGR)
+    # Nếu quá tối thì boost thêm brightness/contrast qua PIL
+    if mean_l < 80:
+        pil = Image.fromarray(cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB))
+        pil = ImageEnhance.Brightness(pil).enhance(1.5)
+        pil = ImageEnhance.Contrast(pil).enhance(1.4)
+        bgr = cv2.cvtColor(np.array(pil), cv2.COLOR_RGB2BGR)
+    return bgr
 
 def extract_template(frame, bbox):
     x, y, w, h = bbox
