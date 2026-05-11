@@ -291,40 +291,32 @@ def recognition_worker():
     print("🤖 Recognition worker started")
     publish(TOPIC_SYSTEM_LOG, {'event': 'ai_server_start', 'ts': int(time.time() * 1000)})
 
+    last_result_time = 0.0
+
     while True:
         time.sleep(RECOGNITION_INTERVAL)
 
-        # Bỏ qua nếu đang trong cooldown
-        if rec_state['phase'] == 'cooldown':
-            elapsed = time.time() - rec_state['last_result_time']
-            if elapsed < COOLDOWN_SECONDS:
-                continue
-            rec_state['phase'] = 'idle'
-            print("🔄 Cooldown over — resuming recognition")
+        # Cooldown — không nhận diện lại quá nhanh
+        if time.time() - last_result_time < COOLDOWN_SECONDS:
+            continue
 
         # Lấy frame từ ESP32
         print(f"📷 [AI] Gọi /capture từ ESP32...")
         frame = capture_frame()
         if frame is None:
             print(f"❌ [AI] Không lấy được frame — kiểm tra ESP32 IP={ESP32_IP}:{ESP32_PORT}")
-            rec_state['phase'] = 'idle'
             continue
         print(f"✅ [AI] Có frame {frame.shape}")
 
-        now = time.time()
-
-        # Detect face thẳng — không dùng motion check (chụp 3s/lần nên diff = 0 khi đứng yên)
+        # Detect face trong frame vừa lấy
         faces = detect_faces(frame)
         if not faces:
             print("🚫 No face detected")
-            if rec_state['phase'] in ('stabilizing', 'recognizing'):
-                rec_state['phase'] = 'idle'
-                rec_state['stable_start'] = None
             continue
 
         print(f"👤 Face in frame (score={faces[0]['score']:.2f})")
 
-        # Publish tọa độ bbox để Flutter vẽ overlay
+        # Publish bbox để Flutter vẽ overlay
         x, y, w, h = faces[0]['bbox']
         fh, fw = frame.shape[:2]
         publish(TOPIC_FACE_BOX, {
@@ -333,58 +325,16 @@ def recognition_worker():
             'ts': int(time.time() * 1000),
         })
 
-        # Bắt đầu đếm stable
-        if rec_state['phase'] == 'idle':
-            rec_state['phase'] = 'stabilizing'
-            rec_state['stable_start'] = now
-            print(f"⏳ Stabilizing — giữ yên {STABLE_SECONDS}s...")
+        # Nhận diện luôn trên frame này
+        print("🔍 Nhận diện khuôn mặt...")
+        result = match_frame(frame)
+        if result is None:
             continue
 
-        if rec_state['phase'] == 'stabilizing':
-            elapsed = now - rec_state['stable_start']
-            if elapsed < STABLE_SECONDS:
-                print(f"⏳ Stabilizing {elapsed:.1f}/{STABLE_SECONDS}s")
-                continue
-            rec_state['phase'] = 'recognizing'
+        print(f"  → {'✅ ' + result['name'] if result['matched'] else '⚠️ Người lạ'} ({result['confidence']*100:.0f}%)")
+        last_result_time = time.time()
 
-        if rec_state['phase'] != 'recognizing':
-            continue
-
-        # ── Chụp 2 frame cách nhau 0.5s, cả 2 phải đồng thuận ─────
-        print("🔍 Capturing 2 frames for recognition...")
-        votes = []
-        for shot in range(2):
-            f = capture_frame()
-            if f is not None:
-                r = match_frame(f)
-                if r is not None:
-                    votes.append(r)
-                    print(f"  Shot {shot+1}: {'✅ ' + r['name'] if r['matched'] else '⚠️ Stranger'} ({r['confidence']*100:.0f}%)")
-            if shot < 1:
-                time.sleep(0.5)
-
-        if not votes:
-            rec_state['phase'] = 'idle'
-            continue
-
-        # Cả 2 frame đều matched cùng tên → xác nhận
-        from collections import Counter
-        matched_votes = [v for v in votes if v['matched']]
-        if len(matched_votes) >= 2:
-            name_counts = Counter(v['name'] for v in matched_votes)
-            best_name = name_counts.most_common(1)[0][0]
-            best_vote = max((v for v in matched_votes if v['name'] == best_name),
-                            key=lambda v: v['confidence'])
-            result = best_vote
-        else:
-            # Người lạ: lấy vote có confidence cao nhất
-            result = max(votes, key=lambda v: v['confidence'])
-            result['matched'] = False
-            result['name'] = 'Người lạ'
-
-        rec_state['phase'] = 'cooldown'
-        rec_state['last_result_time'] = now
-
+        ts = int(time.time() * 1000)
         if result['matched']:
             print(f"✅ Recognized: {result['name']} ({result['confidence']*100:.0f}%)")
             publish(TOPIC_FACE_RESULT, {
@@ -393,7 +343,7 @@ def recognition_worker():
                 'id': result.get('id', ''),
                 'role': result.get('role', ''),
                 'confidence': result['confidence'],
-                'ts': result.get('ts', int(now * 1000)),
+                'ts': ts,
             })
         else:
             print(f"⚠️ Stranger detected (conf={result['confidence']*100:.0f}%)")
@@ -401,7 +351,7 @@ def recognition_worker():
                 'matched': False,
                 'name': 'Người lạ',
                 'confidence': result['confidence'],
-                'ts': int(now * 1000),
+                'ts': ts,
             })
 
 # ============================================================
