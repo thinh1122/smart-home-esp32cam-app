@@ -96,6 +96,13 @@ def on_connect(client, userdata, flags, rc, props=None):
     if rc == 0:
         mqtt_connected = True
         print("✅ MQTT connected")
+        import socket
+        try:
+            my_ip = socket.gethostbyname(socket.gethostname())
+            client.publish('home/server/ip', json.dumps({'ip': my_ip, 'port': 5000}), qos=1, retain=True)
+            print(f"📡 Published server IP: {my_ip}:5000 → Flutter tự cấu hình")
+        except Exception as e:
+            print(f"⚠️ Cannot get local IP: {e}")
     else:
         mqtt_connected = False
         print(f"❌ MQTT connect failed: {rc}")

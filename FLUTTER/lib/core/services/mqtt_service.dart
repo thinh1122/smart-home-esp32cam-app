@@ -4,6 +4,7 @@ import 'package:mqtt_client/mqtt_client.dart';
 import 'package:mqtt_client/mqtt_server_client.dart';
 import 'package:flutter/foundation.dart';
 import '../config/app_config.dart';
+import 'device_config_service.dart';
 
 class MQTTService {
   static final MQTTService _instance = MQTTService._internal();
@@ -69,6 +70,7 @@ class MQTTService {
       AppConfig.topicFaceBbox,
       AppConfig.topicDeviceState,
       AppConfig.topicLogs,
+      'home/server/ip',
     ];
     for (var topic in topics) {
       _client!.subscribe(topic, MqttQos.atLeastOnce);
@@ -104,7 +106,15 @@ class MQTTService {
       );
       try {
         final data = jsonDecode(payload) as Map<String, dynamic>;
-        if (topic == AppConfig.topicFaceBbox) {
+        if (topic == 'home/server/ip') {
+          // Python publish IP khi khởi động → tự động cấu hình AI server
+          final ip = data['ip'] as String?;
+          final port = (data['port'] as num?)?.toInt() ?? 5000;
+          if (ip != null && ip.isNotEmpty) {
+            DeviceConfigService.instance.saveAiServer(ip, port: port);
+            debugPrint('🤖 AI Server tự động cấu hình: $ip:$port');
+          }
+        } else if (topic == AppConfig.topicFaceBbox) {
           _faceBboxController.add(data);
         } else if (topic.startsWith('home/face_recognition/')) {
           _faceRecognitionController.add({'topic': topic, 'data': data});
