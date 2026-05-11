@@ -311,31 +311,16 @@ def recognition_worker():
             continue
         print(f"✅ [AI] Có frame {frame.shape}")
 
-        # Kiểm tra có chuyển động không
-        if not detect_motion(frame):
-            if rec_state['phase'] != 'idle':
-                print("😴 No motion — idle")
+        now = time.time()
+
+        # Detect face thẳng — không dùng motion check (chụp 3s/lần nên diff = 0 khi đứng yên)
+        faces = detect_faces(frame)
+        if not faces:
+            print("🚫 No face detected")
+            if rec_state['phase'] in ('stabilizing', 'recognizing'):
                 rec_state['phase'] = 'idle'
                 rec_state['stable_start'] = None
             continue
-
-        now = time.time()
-
-        # Khi đang stabilizing/recognizing thì bỏ qua motion check
-        # chỉ cần mặt vẫn còn trong frame
-        if rec_state['phase'] in ('stabilizing', 'recognizing'):
-            faces = detect_faces(frame)
-            if not faces:
-                print("🚫 Face lost during stabilize — reset")
-                rec_state['phase'] = 'idle'
-                rec_state['stable_start'] = None
-                continue
-        else:
-            print("🏃 Motion detected — checking for face...")
-            faces = detect_faces(frame)
-            if not faces:
-                print("🚫 No face detected")
-                continue
 
         print(f"👤 Face in frame (score={faces[0]['score']:.2f})")
 
