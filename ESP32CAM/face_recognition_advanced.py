@@ -550,15 +550,22 @@ if __name__ == '__main__':
     print(f"🔗 ESP32 source: http://{ESP32_IP}:{ESP32_PORT}/stream")
     print(f"📡 MQTT: {MQTT_BROKER}:{MQTT_PORT}")
 
-    try:
+    # Chạy Flask trên thread riêng — không block stdout
+    def _run_server():
         try:
             from waitress import serve
-            print("🚀 Running with waitress (production WSGI)")
             serve(app, host='0.0.0.0', port=5000, threads=8)
         except ImportError:
-            print("⚠️ waitress chưa cài — chạy: pip install waitress")
-            print("   Fallback: Flask dev server (có thể lag khi stream)")
             app.run(host='0.0.0.0', port=5000, debug=False, threaded=True)
+
+    threading.Thread(target=_run_server, daemon=True).start()
+    print("🚀 Running with waitress on :5000")
+
+    try:
+        while True:
+            time.sleep(1)
+    except KeyboardInterrupt:
+        print("⛔ Shutting down...")
     finally:
         if zc and mdns_info:
             zc.unregister_service(mdns_info)
