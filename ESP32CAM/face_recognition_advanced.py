@@ -51,7 +51,7 @@ def _save_esp32_config():
 
 _load_esp32_config()  # đọc config ngay khi import
 
-MQTT_BROKER = "broker.hivemq.com"
+MQTT_BROKER = "broker.emqx.io"
 MQTT_PORT   = 1883
 
 # Bypass proxy hệ thống — requests tới ESP32 trên LAN không qua proxy
@@ -145,7 +145,7 @@ def publish(topic, payload):
 # ============================================================
 def capture_frame():
     """Lấy JPEG từ /capture ESP32 port 80 (server riêng, không tranh với stream port 81)."""
-    url = f"http://{ESP32_IP}:80/capture"
+    url = f"http://{ESP32_IP}:{ESP32_PORT}/capture"
     for attempt in range(3):
         try:
             r = requests.get(url, timeout=4, proxies=_NO_PROXY)
