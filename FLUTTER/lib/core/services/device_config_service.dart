@@ -44,11 +44,11 @@ class DeviceConfigService {
       _esp32Ip   = '';
       _esp32Port = 81;
     } else {
-      _esp32Ip   = prefs.getString(_keyEsp32Ip) ?? '';
+      _esp32Ip   = prefs.getString(_keyEsp32Ip) ?? '192.168.1.200';
       _esp32Port = savedEsp32Port;
     }
 
-    // AI Server
+    // AI Server — tự nhận qua MQTT topic home/server/ip khi Python khởi động
     _aiIp   = prefs.getString(_keyAiIp)  ?? '';
     _aiPort = prefs.getInt(_keyAiPort)   ?? 5000;
   }
