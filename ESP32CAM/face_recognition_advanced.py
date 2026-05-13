@@ -57,9 +57,8 @@ MQTT_PORT   = 1883
 _NO_PROXY = {"http": "", "https": ""}
 
 # Recognition tuning
-RECOGNITION_INTERVAL = 1.0    # giây giữa mỗi lần check — 1 frame/1s
-STABLE_SECONDS       = 1.5    # giây mặt phải giữ yên trước khi nhận diện
-MATCH_THRESHOLD      = 0.35   # độ tương đồng tối thiểu để coi là khớp
+RECOGNITION_INTERVAL = 1.0    # giây giữa mỗi lần lấy frame
+MATCH_THRESHOLD      = 0.55   # cosine similarity tối thiểu — đủ cao để tránh nhầm
 COOLDOWN_SECONDS     = 8.0    # không nhận diện lại trong n giây sau khi đã nhận
 
 # MQTT topics — phải khớp với AppConfig trong Flutter
@@ -302,78 +301,95 @@ def match_frame(frame):
 
 # ============================================================
 # BACKGROUND RECOGNITION WORKER
-# Đây là trái tim của Cách B:
-# Python server tự pull frame, tự nhận diện, tự publish MQTT
-# Flutter không cần làm gì ngoài subscribe MQTT
+# - Lấy frame mỗi RECOGNITION_INTERVAL giây
+# - Detect + match chạy trên thread pool — không block vòng lặp chính
+# - Drop frame nếu thread pool đang bận (tránh queue chất đống)
+# - Watchdog tự restart nếu worker chết
 # ============================================================
-def recognition_worker():
-    global rec_state
-    print("🤖 Recognition worker started")
-    publish(TOPIC_SYSTEM_LOG, {'event': 'ai_server_start', 'ts': int(time.time() * 1000)})
+_processing = threading.Event()   # True = đang xử lý frame, drop frame mới
 
-    last_result_time = 0.0
-
-    while True:
-        time.sleep(RECOGNITION_INTERVAL)
-
-        # Cooldown — không nhận diện lại quá nhanh
-        if time.time() - last_result_time < COOLDOWN_SECONDS:
-            continue
-
-        # Lấy frame từ ESP32
-        print(f"📷 [AI] Gọi /capture từ ESP32...")
-        frame = capture_frame()
-        if frame is None:
-            print(f"❌ [AI] Không lấy được frame — kiểm tra ESP32 IP={ESP32_IP}:{ESP32_CAPTURE_PORT}")
-            continue
-        print(f"✅ [AI] Có frame {frame.shape}")
-
-        # Detect face trong frame vừa lấy
+def _process_frame(frame, last_result_time_ref):
+    """Chạy trong ThreadPoolExecutor — detect + match + publish."""
+    try:
         faces = detect_faces(frame)
+        ts = int(time.time() * 1000)
+
         if not faces:
-            print("🚫 No face detected")
-            publish(TOPIC_FACE_BOX, {'clear': True, 'ts': int(time.time() * 1000)})
-            continue
+            print("🚫 No face")
+            publish(TOPIC_FACE_BOX, {'clear': True, 'ts': ts})
+            return
 
-        print(f"👤 Face in frame (score={faces[0]['score']:.2f})")
-
-        # Publish bbox để Flutter vẽ overlay
-        x, y, w, h = faces[0]['bbox']
+        best = max(faces, key=lambda f: f['score'])
+        x, y, w, h = best['bbox']
         fh, fw = frame.shape[:2]
         publish(TOPIC_FACE_BOX, {
             'x': round(x / fw, 4), 'y': round(y / fh, 4),
             'w': round(w / fw, 4), 'h': round(h / fh, 4),
-            'ts': int(time.time() * 1000),
+            'ts': ts,
         })
+        print(f"👤 Face score={best['score']:.2f}")
 
-        # Nhận diện luôn trên frame này
-        print("🔍 Nhận diện khuôn mặt...")
+        # Cooldown check — bên trong thread để không waste detect
+        if time.time() - last_result_time_ref[0] < COOLDOWN_SECONDS:
+            return
+
         result = match_frame(frame)
         if result is None:
-            continue
+            return
 
-        print(f"  → {'✅ ' + result['name'] if result['matched'] else '⚠️ Người lạ'} ({result['confidence']*100:.0f}%)")
-        last_result_time = time.time()
+        print(f"  → {'✅ '+result['name'] if result['matched'] else '⚠️ Lạ'} ({result['confidence']*100:.0f}%)")
+        last_result_time_ref[0] = time.time()
+        ts2 = int(time.time() * 1000)
 
-        ts = int(time.time() * 1000)
         if result['matched']:
-            print(f"✅ Recognized: {result['name']} ({result['confidence']*100:.0f}%)")
             publish(TOPIC_FACE_RESULT, {
-                'matched': True,
-                'name': result['name'],
-                'id': result.get('id', ''),
-                'role': result.get('role', ''),
-                'confidence': result['confidence'],
-                'ts': ts,
+                'matched': True, 'name': result['name'],
+                'id': result.get('id', ''), 'role': result.get('role', ''),
+                'confidence': result['confidence'], 'ts': ts2,
             })
         else:
-            print(f"⚠️ Stranger detected (conf={result['confidence']*100:.0f}%)")
             publish(TOPIC_FACE_ALERT, {
-                'matched': False,
-                'name': 'Người lạ',
-                'confidence': result['confidence'],
-                'ts': ts,
+                'matched': False, 'name': 'Người lạ',
+                'confidence': result['confidence'], 'ts': ts2,
             })
+    finally:
+        _processing.clear()
+
+def recognition_worker():
+    from concurrent.futures import ThreadPoolExecutor
+    print("🤖 Recognition worker started")
+    publish(TOPIC_SYSTEM_LOG, {'event': 'ai_server_start', 'ts': int(time.time() * 1000)})
+
+    last_result_time_ref = [0.0]  # list để truyền by-reference vào thread
+
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        while True:
+            time.sleep(RECOGNITION_INTERVAL)
+
+            # Drop frame nếu thread pool đang bận — tránh queue chồng chất
+            if _processing.is_set():
+                print("⏭ Drop frame — still processing previous")
+                continue
+
+            frame = capture_frame()
+            if frame is None:
+                print(f"❌ Capture failed — {ESP32_IP}:{ESP32_CAPTURE_PORT}")
+                continue
+
+            print(f"📷 Frame {frame.shape}")
+            _processing.set()
+            pool.submit(_process_frame, frame, last_result_time_ref)
+
+def _start_recognition_worker():
+    """Khởi động worker trong daemon thread, tự restart nếu crash."""
+    def _watchdog():
+        while True:
+            try:
+                recognition_worker()
+            except Exception as e:
+                print(f"💀 Recognition worker crashed: {e} — restarting in 3s")
+                time.sleep(3)
+    threading.Thread(target=_watchdog, daemon=True).start()
 
 # ============================================================
 # DATABASE
@@ -551,7 +567,7 @@ if __name__ == '__main__':
     init_mqtt()
 
     # Recognition: gọi /capture để nhận diện, độc lập với stream
-    threading.Thread(target=recognition_worker, daemon=True).start()
+    _start_recognition_worker()
 
     # mDNS: Flutter tự tìm thấy server trên LAN, không cần nhập IP
     zc, mdns_info = start_mdns(port=5000)

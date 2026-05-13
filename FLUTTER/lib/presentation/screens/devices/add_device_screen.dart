@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../core/services/device_config_service.dart';
 import 'ble_wifi_provisioning_screen.dart';
 
 class AddDeviceScreen extends StatefulWidget {
@@ -36,6 +37,8 @@ class _AddDeviceScreenState extends State<AddDeviceScreen> with SingleTickerProv
             SliverToBoxAdapter(child: _buildScanAnimation()),
             SliverToBoxAdapter(child: const SizedBox(height: 36)),
             SliverToBoxAdapter(child: _buildSetupButtons()),
+            SliverToBoxAdapter(child: const SizedBox(height: 20)),
+            SliverToBoxAdapter(child: _buildAiServerCard()),
             SliverToBoxAdapter(child: const SizedBox(height: 32)),
             SliverToBoxAdapter(child: _buildCategoriesLabel()),
             SliverToBoxAdapter(child: const SizedBox(height: 16)),
@@ -147,6 +150,67 @@ class _AddDeviceScreenState extends State<AddDeviceScreen> with SingleTickerProv
               Text('BLE WiFi Setup', style: TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.bold)),
             ],
           ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAiServerCard() {
+    final svc = DeviceConfigService.instance;
+    final hasIp = svc.hasAiIp;
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      child: Container(
+        padding: const EdgeInsets.all(18),
+        decoration: BoxDecoration(
+          color: AppColors.card,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: hasIp ? Colors.green.withOpacity(0.25) : Colors.white10),
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: (hasIp ? Colors.green : Colors.white12).withOpacity(0.15),
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: Icon(Icons.smart_toy_rounded,
+                  color: hasIp ? Colors.greenAccent : Colors.white38, size: 22),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('AI Server (Python)',
+                      style: TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 4),
+                  Text(
+                    hasIp ? '${svc.aiIp}:${svc.aiPort}' : 'Chờ Python khởi động...',
+                    style: TextStyle(
+                      color: hasIp ? Colors.greenAccent : Colors.white38,
+                      fontSize: 12,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
+                color: hasIp ? Colors.green.withOpacity(0.15) : Colors.white.withOpacity(0.05),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Text(
+                hasIp ? 'Auto' : 'MQTT',
+                style: TextStyle(
+                  color: hasIp ? Colors.greenAccent : Colors.white38,
+                  fontSize: 10, fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );

@@ -9,7 +9,6 @@ import '../../../core/theme/app_theme.dart';
 import '../../../core/services/database_helper.dart';
 import '../../../core/services/device_config_service.dart';
 import '../../../core/services/mqtt_service.dart';
-import '../../../core/services/notification_service.dart';
 import '../../../data/models/log_model.dart';
 import '../members/members_screen.dart';
 
@@ -63,8 +62,6 @@ class _FrontDoorCamScreenState extends State<FrontDoorCamScreen> {
         final data  = event['data']  as Map<String, dynamic>;
 
         if (topic == AppConfig.topicFaceAlert) {
-          // Người lạ
-          NotificationService.instance.showStrangerAlert();
           DatabaseHelper.instance.addLog('Cảnh báo: Người lạ', 'Phát hiện khuôn mặt không xác định tại cửa');
           if (mounted) {
             _showBanner('CẢNH BÁO: Phát hiện người lạ!', AppColors.error);
@@ -74,11 +71,9 @@ class _FrontDoorCamScreenState extends State<FrontDoorCamScreen> {
           final matched = data['matched'] as bool? ?? false;
           if (matched) {
             final name       = data['name'] as String? ?? '';
-            final role       = data['role'] as String? ?? '';
             final confidence = data['confidence'] != null
                 ? '${((data['confidence'] as num) * 100).toStringAsFixed(0)}%'
                 : '';
-            NotificationService.instance.showMemberRecognized(name: name, role: role, confidence: confidence);
             DatabaseHelper.instance.addLog('Nhận diện thành công', '$name tại cửa · $confidence');
           }
           if (mounted) {
@@ -87,7 +82,6 @@ class _FrontDoorCamScreenState extends State<FrontDoorCamScreen> {
               matched ? AppColors.success : AppColors.error,
             );
             setState(() => _recognizedFaces = [data]);
-            // Tự xóa overlay sau 8 giây
             Future.delayed(const Duration(seconds: 8), () {
               if (mounted) setState(() => _recognizedFaces = []);
             });
@@ -140,12 +134,12 @@ class _FrontDoorCamScreenState extends State<FrontDoorCamScreen> {
   Future<void> _loadData() async {
     final logs = await DatabaseHelper.instance.getLogs(limit: 30);
     if (!mounted) return;
-    setState(() {
-      _logs = logs.map(LogEntry.fromMap).toList();
-    });
-    if (_logs.isEmpty) {
+    if (logs.isEmpty) {
       await DatabaseHelper.instance.addLog('Hệ thống khởi động', 'Smart Home ESP32-CAM online');
-      _loadData();
+      final fresh = await DatabaseHelper.instance.getLogs(limit: 30);
+      if (mounted) setState(() => _logs = fresh.map(LogEntry.fromMap).toList());
+    } else {
+      setState(() => _logs = logs.map(LogEntry.fromMap).toList());
     }
   }
 
@@ -262,7 +256,7 @@ class _FrontDoorCamScreenState extends State<FrontDoorCamScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    _glassPill(Icons.wifi_rounded, 'Relay Connected', AppColors.info),
+                    _glassPill(Icons.wifi_rounded, 'Direct Stream', AppColors.info),
                     const SizedBox(height: 8),
                     _glassPill(Icons.memory_rounded, 'ESP32-CAM', Colors.white60),
                   ],
@@ -283,7 +277,7 @@ class _FrontDoorCamScreenState extends State<FrontDoorCamScreen> {
   }
 
   Widget _buildStreamError() {
-    final hasIp = DeviceConfigService.instance.hasAiIp;
+    final hasIp = DeviceConfigService.instance.hasEsp32Ip;
     return Container(
       color: AppColors.cardElevated,
       child: Column(
@@ -297,7 +291,7 @@ class _FrontDoorCamScreenState extends State<FrontDoorCamScreen> {
           ),
           const SizedBox(height: 4),
           Text(
-            hasIp ? AppConfig.streamUrl : 'Vào Devices → Cấu hình AI Server để kết nối camera',
+            hasIp ? AppConfig.streamUrl : 'Vào Devices → BLE WiFi Setup để kết nối ESP32',
             style: const TextStyle(color: Colors.white30, fontSize: 10),
             textAlign: TextAlign.center,
           ),

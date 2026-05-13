@@ -253,7 +253,7 @@ class _BLEWiFiProvisioningScreenState extends State<BLEWiFiProvisioningScreen> {
     http.post(
       Uri.parse(url),
       headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({'ip': ip, 'port': 81}),
+      body: jsonEncode({'ip': ip, 'capture_port': 80}),
     ).then((_) {
       debugPrint('AI server notified: ESP32 IP = $ip');
     }).catchError((e) {
