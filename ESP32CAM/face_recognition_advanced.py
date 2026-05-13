@@ -91,14 +91,44 @@ rec_state = {
 # ============================================================
 # MQTT
 # ============================================================
+def _get_lan_ip() -> str:
+    """Trả về IP của PC trên cùng subnet với ESP32 (192.168.x.x / 10.x.x.x).
+    Ưu tiên IP cùng dải với ESP32_IP, fallback về IP đầu tiên tìm được."""
+    import socket, ipaddress
+    esp_net = ipaddress.ip_network(ESP32_IP + '/24', strict=False)
+    candidates = []
+    try:
+        # Lấy tất cả IP của máy bằng cách connect UDP (không gửi gói thật)
+        for info in socket.getaddrinfo(socket.gethostname(), None, socket.AF_INET):
+            ip = info[4][0]
+            try:
+                addr = ipaddress.ip_address(ip)
+                if addr.is_loopback or addr.is_link_local:
+                    continue
+                candidates.append(ip)
+                if addr in esp_net:
+                    return ip  # cùng subnet → dùng ngay
+            except ValueError:
+                pass
+    except Exception:
+        pass
+    # Fallback: connect tới MQTT broker để OS chọn đúng interface
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+            s.connect(('8.8.8.8', 80))
+            return s.getsockname()[0]
+    except Exception:
+        pass
+    return candidates[0] if candidates else '127.0.0.1'
+
+
 def on_connect(client, userdata, flags, rc, props=None):
     global mqtt_connected
     if rc == 0:
         mqtt_connected = True
         print("✅ MQTT connected")
-        import socket
         try:
-            my_ip = socket.gethostbyname(socket.gethostname())
+            my_ip = _get_lan_ip()
             client.publish('home/server/ip', json.dumps({'ip': my_ip, 'port': 5000}), qos=1, retain=True)
             print(f"📡 Published server IP: {my_ip}:5000 → Flutter tự cấu hình")
         except Exception as e:
