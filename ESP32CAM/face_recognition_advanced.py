@@ -57,9 +57,10 @@ MQTT_PORT   = 1883
 _NO_PROXY = {"http": "", "https": ""}
 
 # Recognition tuning
-RECOGNITION_INTERVAL = 1.0    # giây giữa mỗi lần lấy frame
-MATCH_THRESHOLD      = 0.55   # cosine similarity tối thiểu — đủ cao để tránh nhầm
-COOLDOWN_SECONDS     = 8.0    # không nhận diện lại trong n giây sau khi đã nhận
+CAPTURE_INTERVAL  = 0.3    # giây giữa mỗi lần lấy frame — 3 frame/s
+NUM_WORKERS       = 3      # số AI worker chạy song song (có GPU nên để 3)
+MATCH_THRESHOLD   = 0.55   # cosine similarity tối thiểu
+COOLDOWN_SECONDS  = 8.0    # không publish result lại trong n giây
 
 # MQTT topics — phải khớp với AppConfig trong Flutter
 TOPIC_FACE_RESULT = "home/face_recognition/result"
@@ -300,94 +301,192 @@ def match_frame(frame):
     return {'matched': False, 'name': 'Người lạ', 'confidence': round(best_score, 3), 'ts': int(time.time() * 1000)}
 
 # ============================================================
-# BACKGROUND RECOGNITION WORKER
-# - Lấy frame mỗi RECOGNITION_INTERVAL giây
-# - Detect + match chạy trên thread pool — không block vòng lặp chính
-# - Drop frame nếu thread pool đang bận (tránh queue chất đống)
-# - Watchdog tự restart nếu worker chết
+# PARALLEL RECOGNITION PIPELINE
+#
+# Kiến trúc:
+#   Capturer thread: lấy frame mỗi CAPTURE_INTERVAL giây
+#                    → round-robin vào queue của từng worker
+#   NUM_WORKERS AI workers: mỗi worker có MediaPipe riêng
+#                    → detect + match + publish độc lập
+#
+# Tránh flood MQTT bbox: chỉ publish bbox có ts mới nhất
+# Cooldown dùng shared atomic float — tất cả worker cùng check
 # ============================================================
-_processing = threading.Event()   # True = đang xử lý frame, drop frame mới
 
-def _process_frame(frame, last_result_time_ref):
-    """Chạy trong ThreadPoolExecutor — detect + match + publish."""
-    try:
-        faces = detect_faces(frame)
-        ts = int(time.time() * 1000)
+import queue as _Q
 
-        if not faces:
-            print("🚫 No face")
-            publish(TOPIC_FACE_BOX, {'clear': True, 'ts': ts})
-            return
+# Shared state giữa các worker — dùng lock để tránh race condition
+_result_lock      = threading.Lock()
+_last_result_time = [0.0]   # cooldown chung
+_bbox_lock        = threading.Lock()
+_last_bbox_ts     = [0]     # tránh publish bbox từ frame cũ hơn
 
-        best = max(faces, key=lambda f: f['score'])
-        x, y, w, h = best['bbox']
-        fh, fw = frame.shape[:2]
-        publish(TOPIC_FACE_BOX, {
-            'x': round(x / fw, 4), 'y': round(y / fh, 4),
-            'w': round(w / fw, 4), 'h': round(h / fh, 4),
-            'ts': ts,
-        })
-        print(f"👤 Face score={best['score']:.2f}")
+def _ai_worker(worker_id: int, frame_queue: _Q.Queue):
+    """1 AI worker — có MediaPipe instance riêng, chạy mãi."""
+    print(f"🤖 Worker-{worker_id} started")
+    detector = mp.solutions.face_detection.FaceDetection(
+        model_selection=1, min_detection_confidence=0.5
+    )
 
-        # Cooldown check — bên trong thread để không waste detect
-        if time.time() - last_result_time_ref[0] < COOLDOWN_SECONDS:
-            return
+    while True:
+        try:
+            frame, frame_ts = frame_queue.get(timeout=2)
+        except _Q.Empty:
+            continue
 
-        result = match_frame(frame)
-        if result is None:
-            return
+        try:
+            ts = int(time.time() * 1000)
 
-        print(f"  → {'✅ '+result['name'] if result['matched'] else '⚠️ Lạ'} ({result['confidence']*100:.0f}%)")
-        last_result_time_ref[0] = time.time()
-        ts2 = int(time.time() * 1000)
+            # Detect bằng MediaPipe instance riêng — thread-safe vì không share
+            rgb  = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            res  = detector.process(rgb)
+            fh, fw = frame.shape[:2]
+            faces = []
+            if res.detections:
+                for det in res.detections:
+                    b = det.location_data.relative_bounding_box
+                    x, y = int(b.xmin * fw), int(b.ymin * fh)
+                    w, h = int(b.width * fw), int(b.height * fh)
+                    mx, my = int(w * 0.2), int(h * 0.2)
+                    x, y = max(0, x - mx), max(0, y - my)
+                    w, h = min(fw - x, w + 2*mx), min(fh - y, h + 2*my)
+                    if w >= 40 and h >= 40:
+                        faces.append({'bbox': (x, y, w, h), 'score': float(det.score[0])})
+            # Fallback cascade nếu MediaPipe không thấy
+            if not faces:
+                cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
+                gray = cv2.equalizeHist(cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY))
+                for (x, y, w, h) in cascade.detectMultiScale(gray, 1.05, 3, minSize=(30, 30)):
+                    faces.append({'bbox': (x, y, int(w), int(h)), 'score': 0.7})
 
-        if result['matched']:
-            publish(TOPIC_FACE_RESULT, {
-                'matched': True, 'name': result['name'],
-                'id': result.get('id', ''), 'role': result.get('role', ''),
-                'confidence': result['confidence'], 'ts': ts2,
-            })
-        else:
-            publish(TOPIC_FACE_ALERT, {
-                'matched': False, 'name': 'Người lạ',
-                'confidence': result['confidence'], 'ts': ts2,
-            })
-    finally:
-        _processing.clear()
-
-def recognition_worker():
-    from concurrent.futures import ThreadPoolExecutor
-    print("🤖 Recognition worker started")
-    publish(TOPIC_SYSTEM_LOG, {'event': 'ai_server_start', 'ts': int(time.time() * 1000)})
-
-    last_result_time_ref = [0.0]  # list để truyền by-reference vào thread
-
-    with ThreadPoolExecutor(max_workers=1) as pool:
-        while True:
-            time.sleep(RECOGNITION_INTERVAL)
-
-            # Drop frame nếu thread pool đang bận — tránh queue chồng chất
-            if _processing.is_set():
-                print("⏭ Drop frame — still processing previous")
+            if not faces:
+                with _bbox_lock:
+                    if frame_ts > _last_bbox_ts[0]:
+                        _last_bbox_ts[0] = frame_ts
+                        do_clear = True
+                    else:
+                        do_clear = False
+                if do_clear:
+                    publish(TOPIC_FACE_BOX, {'clear': True, 'ts': ts})
+                    print(f"[W{worker_id}] 🚫 No face")
                 continue
 
-            frame = capture_frame()
-            if frame is None:
-                print(f"❌ Capture failed — {ESP32_IP}:{ESP32_CAPTURE_PORT}")
+            best = max(faces, key=lambda f: f['score'])
+            x, y, w, h = best['bbox']
+
+            # Publish bbox chỉ nếu frame này mới hơn bbox đã publish
+            with _bbox_lock:
+                if frame_ts > _last_bbox_ts[0]:
+                    _last_bbox_ts[0] = frame_ts
+                    do_bbox = True
+                else:
+                    do_bbox = False
+            if do_bbox:
+                publish(TOPIC_FACE_BOX, {
+                    'x': round(x / fw, 4), 'y': round(y / fh, 4),
+                    'w': round(w / fw, 4), 'h': round(h / fh, 4),
+                    'ts': ts,
+                })
+            print(f"[W{worker_id}] 👤 score={best['score']:.2f}")
+
+            # Cooldown check lần 1 — tránh match nếu vừa publish gần đây
+            with _result_lock:
+                if time.time() - _last_result_time[0] < COOLDOWN_SECONDS:
+                    continue
+
+            # Match
+            templ = extract_template(frame, best['bbox'])
+            if templ is None:
                 continue
 
-            print(f"📷 Frame {frame.shape}")
-            _processing.set()
-            pool.submit(_process_frame, frame, last_result_time_ref)
+            with lock:
+                lt, ln, li = list(known_templates), list(known_names), dict(known_info)
+
+            if not lt:
+                continue
+
+            best_score, best_name = 0.0, None
+            for i, kt in enumerate(lt):
+                score = compare_templates(templ, kt)
+                if score > MATCH_THRESHOLD and score > best_score:
+                    best_score, best_name = score, ln[i]
+
+            # Cooldown check lần 2 + update atomic — tránh 2 worker publish cùng lúc
+            with _result_lock:
+                now = time.time()
+                if now - _last_result_time[0] < COOLDOWN_SECONDS:
+                    continue
+                _last_result_time[0] = now
+
+            ts2 = int(now * 1000)
+            if best_name:
+                info = li.get(best_name, {})
+                print(f"[W{worker_id}] ✅ {best_name} ({best_score*100:.0f}%)")
+                publish(TOPIC_FACE_RESULT, {
+                    'matched': True, 'name': best_name,
+                    'id': info.get('id', ''), 'role': info.get('role', ''),
+                    'confidence': round(best_score, 3), 'ts': ts2,
+                })
+            else:
+                print(f"[W{worker_id}] ⚠️ Stranger ({best_score*100:.0f}%)")
+                publish(TOPIC_FACE_ALERT, {
+                    'matched': False, 'name': 'Người lạ',
+                    'confidence': round(best_score, 3), 'ts': ts2,
+                })
+
+        except Exception as e:
+            print(f"[W{worker_id}] ❌ Error: {e}")
+
+
+def _capturer():
+    """Lấy frame liên tục, round-robin STRICT vào queue của từng worker.
+
+    Mỗi frame chỉ đến đúng 1 worker theo thứ tự — không chuyển sang worker khác.
+    Nếu worker đó bận → drop frame đó, advance idx → worker tiếp theo nhận frame sau.
+    Đảm bảo: không bao giờ 2 worker xử lý cùng 1 frame.
+    """
+    queues = [_Q.Queue(maxsize=1) for _ in range(NUM_WORKERS)]
+
+    for i, q in enumerate(queues):
+        threading.Thread(target=_ai_worker, args=(i, q), daemon=True).start()
+
+    idx = 0
+    print(f"📸 Capturer started — {NUM_WORKERS} workers, interval={CAPTURE_INTERVAL}s")
+
+    while True:
+        t0 = time.time()
+        frame = capture_frame()
+        if frame is None:
+            print(f"❌ Capture failed — {ESP32_IP}:{ESP32_CAPTURE_PORT}")
+            time.sleep(1)
+            continue
+
+        frame_ts = int(t0 * 1000)
+        target = idx % NUM_WORKERS
+
+        try:
+            queues[target].put_nowait((frame, frame_ts))
+            print(f"📷 Frame → W{target}")
+        except _Q.Full:
+            # Worker này bận — drop frame, không chuyển sang worker khác
+            print(f"⏭ W{target} busy — drop frame")
+
+        idx += 1  # luôn advance dù drop — frame tiếp theo vào worker tiếp theo
+
+        elapsed = time.time() - t0
+        sleep_t = max(0.0, CAPTURE_INTERVAL - elapsed)
+        if sleep_t > 0:
+            time.sleep(sleep_t)
+
 
 def _start_recognition_worker():
-    """Khởi động worker trong daemon thread, tự restart nếu crash."""
+    """Khởi động capturer trong daemon thread, watchdog tự restart nếu crash."""
     def _watchdog():
         while True:
             try:
-                recognition_worker()
+                _capturer()
             except Exception as e:
-                print(f"💀 Recognition worker crashed: {e} — restarting in 3s")
+                print(f"💀 Capturer crashed: {e} — restarting in 3s")
                 time.sleep(3)
     threading.Thread(target=_watchdog, daemon=True).start()
 
