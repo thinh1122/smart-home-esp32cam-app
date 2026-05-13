@@ -93,8 +93,12 @@ class _HomeDashboardState extends State<HomeDashboard> {
     // Lắng nghe bbox khuôn mặt để vẽ overlay
     _bboxSub = MQTTService().faceBboxStream.listen((bbox) {
       if (!mounted) return;
+      if (bbox['clear'] == true) {
+        _bboxClearTimer?.cancel();
+        setState(() => _faceBbox = null);
+        return;
+      }
       setState(() => _faceBbox = bbox);
-      // Xoá box sau 2s nếu không có frame mới
       _bboxClearTimer?.cancel();
       _bboxClearTimer = Timer(const Duration(seconds: 2), () {
         if (mounted) setState(() => _faceBbox = null);

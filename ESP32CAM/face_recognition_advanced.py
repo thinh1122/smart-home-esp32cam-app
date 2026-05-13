@@ -321,6 +321,7 @@ def recognition_worker():
         faces = detect_faces(frame)
         if not faces:
             print("🚫 No face detected")
+            publish(TOPIC_FACE_BOX, {'clear': True, 'ts': int(time.time() * 1000)})
             continue
 
         print(f"👤 Face in frame (score={faces[0]['score']:.2f})")
