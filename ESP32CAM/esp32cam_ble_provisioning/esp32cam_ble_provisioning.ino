@@ -47,9 +47,9 @@
 #define WIFILIST_UUID  "2b8c9e50-7182-4f32-8414-b49911e0eb7e"
 
 // ============================================================
-// Stream config — low FPS to keep ESP32 free
+// Stream config
 // ============================================================
-#define STREAM_FPS        10          // target FPS
+#define STREAM_FPS        8           // 8fps — đủ mượt, giảm tải WiFi
 #define FRAME_DELAY_MS    (1000 / STREAM_FPS)
 
 #define PART_BOUNDARY "123456789000000000000987654321"
@@ -105,8 +105,13 @@ static esp_err_t stream_handler(httpd_req_t* req) {
   TickType_t lastFrame = xTaskGetTickCount();
 
   while (true) {
+    // Flush frame cũ còn trong sensor buffer — lấy và bỏ ngay
     fb = esp_camera_fb_get();
-    if (!fb) { vTaskDelay(pdMS_TO_TICKS(100)); continue; }
+    if (fb) { esp_camera_fb_return(fb); fb = nullptr; }
+
+    // Lấy frame mới nhất
+    fb = esp_camera_fb_get();
+    if (!fb) { vTaskDelay(pdMS_TO_TICKS(50)); continue; }
 
     esp_err_t res = httpd_resp_send_chunk(req, BOUNDARY, strlen(BOUNDARY));
     if (res == ESP_OK) {
@@ -116,9 +121,8 @@ static esp_err_t stream_handler(httpd_req_t* req) {
     if (res == ESP_OK) res = httpd_resp_send_chunk(req, (const char*)fb->buf, fb->len);
     esp_camera_fb_return(fb);
 
-    if (res != ESP_OK) break;  // client disconnected
+    if (res != ESP_OK) break;  // client disconnect
 
-    // Throttle: wait remainder of frame interval
     vTaskDelayUntil(&lastFrame, pdMS_TO_TICKS(FRAME_DELAY_MS));
   }
   return ESP_OK;
@@ -219,10 +223,10 @@ bool initCamera() {
   cfg.xclk_freq_hz = 20000000;   // 20MHz
   cfg.pixel_format = PIXFORMAT_JPEG;
   cfg.frame_size   = FRAMESIZE_QVGA;   // 320x240
-  cfg.jpeg_quality = 8;               // 8=rất nét, 63=worst
+  cfg.jpeg_quality = 12;              // 12=cân bằng chất lượng/size (~20KB/frame)
   cfg.fb_count     = 2;
   cfg.fb_location  = CAMERA_FB_IN_PSRAM;
-  cfg.grab_mode    = CAMERA_GRAB_LATEST;
+  cfg.grab_mode    = CAMERA_GRAB_LATEST; // luôn lấy frame mới nhất từ sensor
 
   if (esp_camera_init(&cfg) != ESP_OK) {
     Serial.println("❌ Camera init failed");
