@@ -15,7 +15,8 @@ class MemberSyncService {
           .timeout(const Duration(seconds: 6));
       if (res.statusCode != 200) return;
 
-      final List<dynamic> serverMembers = jsonDecode(res.body);
+      final body = jsonDecode(res.body) as Map<String, dynamic>;
+      final List<dynamic> serverMembers = body['members'] as List<dynamic>? ?? [];
       for (final m in serverMembers) {
         final id = m['id']?.toString() ?? '';
         if (id.isEmpty) continue;

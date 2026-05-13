@@ -9,7 +9,6 @@ import numpy as np
 import os
 import sqlite3
 import threading
-import queue as _queue_module
 import requests
 from flask import Flask, jsonify, request
 from datetime import datetime
@@ -30,24 +29,24 @@ IMG_DIR  = "img"
 TEMP_DIR = "temp"
 DB_FILE  = "members.db"
 
-ESP32_IP   = "192.168.1.27"   # default — bị ghi đè bởi esp32_config.json nếu có
-ESP32_PORT = 81
+ESP32_IP          = "192.168.1.200"  # default — bị ghi đè bởi esp32_config.json nếu có
+ESP32_CAPTURE_PORT = 80              # port riêng cho /capture — không tranh với stream port 81
 CONFIG_FILE = "esp32_config.json"
 
 def _load_esp32_config():
-    global ESP32_IP, ESP32_PORT
+    global ESP32_IP, ESP32_CAPTURE_PORT
     try:
         with open(CONFIG_FILE, 'r') as f:
             data = json.load(f)
-            ESP32_IP   = data.get('ip', ESP32_IP)
-            ESP32_PORT = data.get('port', ESP32_PORT)
-            print(f"📂 Loaded ESP32 config: {ESP32_IP}:{ESP32_PORT}")
+            ESP32_IP           = data.get('ip', ESP32_IP)
+            ESP32_CAPTURE_PORT = data.get('capture_port', ESP32_CAPTURE_PORT)
+            print(f"📂 Loaded ESP32 config: {ESP32_IP} capture={ESP32_CAPTURE_PORT}")
     except FileNotFoundError:
         pass
 
 def _save_esp32_config():
     with open(CONFIG_FILE, 'w') as f:
-        json.dump({'ip': ESP32_IP, 'port': ESP32_PORT}, f)
+        json.dump({'ip': ESP32_IP, 'capture_port': ESP32_CAPTURE_PORT}, f)
 
 _load_esp32_config()  # đọc config ngay khi import
 
@@ -175,7 +174,7 @@ def publish(topic, payload):
 # ============================================================
 def capture_frame():
     """Lấy JPEG từ /capture ESP32 port 80 (server riêng, không tranh với stream port 81)."""
-    url = f"http://{ESP32_IP}:{ESP32_PORT}/capture"
+    url = f"http://{ESP32_IP}:{ESP32_CAPTURE_PORT}/capture"
     for attempt in range(3):
         try:
             r = requests.get(url, timeout=4, proxies=_NO_PROXY)
@@ -188,24 +187,6 @@ def capture_frame():
             print(f"⚠️ capture_frame attempt {attempt+1}/3: {e}")
             time.sleep(0.5)
     return None
-
-# ============================================================
-# ANNOTATED FRAME — vẽ bounding box, lưu để serve qua /stream_annotated
-# ============================================================
-def _draw_annotated(frame, faces, label=None):
-    """Vẽ box lên frame, encode JPEG, lưu vào annotated_frame."""
-    global annotated_frame
-    vis = frame.copy()
-    for face in faces:
-        x, y, w, h = face['bbox']
-        color = (0, 255, 0)  # xanh lá
-        cv2.rectangle(vis, (x, y), (x + w, y + h), color, 2)
-        if label:
-            cv2.putText(vis, label, (x, y - 8),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 2)
-    _, jpg = cv2.imencode('.jpg', vis, [cv2.IMWRITE_JPEG_QUALITY, 70])
-    with annotated_frame_lock:
-        annotated_frame = jpg.tobytes()
 
 # ============================================================
 # IMAGE PROCESSING
@@ -343,7 +324,7 @@ def recognition_worker():
         print(f"📷 [AI] Gọi /capture từ ESP32...")
         frame = capture_frame()
         if frame is None:
-            print(f"❌ [AI] Không lấy được frame — kiểm tra ESP32 IP={ESP32_IP}:{ESP32_PORT}")
+            print(f"❌ [AI] Không lấy được frame — kiểm tra ESP32 IP={ESP32_IP}:{ESP32_CAPTURE_PORT}")
             continue
         print(f"✅ [AI] Có frame {frame.shape}")
 
@@ -491,8 +472,7 @@ def delete_member():
 @app.route('/config', methods=['POST', 'GET'])
 def set_config():
     """Flutter gọi sau BLE provisioning để cập nhật IP ESP32"""
-    global ESP32_IP, ESP32_PORT
-    # Hỗ trợ cả JSON body (POST) và query params (GET) để dễ test trên browser
+    global ESP32_IP, ESP32_CAPTURE_PORT
     if request.method == 'POST' and request.is_json:
         data = request.json
     else:
@@ -502,15 +482,15 @@ def set_config():
     if 'ip' in data and data['ip']:
         ESP32_IP = data['ip']
         changed = True
-    if 'port' in data:
-        ESP32_PORT = int(data['port'])
+    if 'capture_port' in data:
+        ESP32_CAPTURE_PORT = int(data['capture_port'])
         changed = True
 
     if changed:
-        print(f"📡 ESP32 config updated: {ESP32_IP}:{ESP32_PORT}")
+        print(f"📡 ESP32 config updated: {ESP32_IP} capture={ESP32_CAPTURE_PORT}")
         _save_esp32_config()
 
-    return jsonify({'ip': ESP32_IP, 'port': ESP32_PORT}), 200
+    return jsonify({'ip': ESP32_IP, 'capture_port': ESP32_CAPTURE_PORT}), 200
 
 @app.route('/status', methods=['GET'])
 def status():
@@ -518,7 +498,7 @@ def status():
         count = len(known_templates)
     return jsonify({
         'status': 'running',
-        'esp32': f"{ESP32_IP}:{ESP32_PORT}",
+        'esp32': f"{ESP32_IP}:{ESP32_CAPTURE_PORT}",
         'templates': count,
         'mqtt': mqtt_connected,
         'recognition_phase': rec_state['phase'],
@@ -537,14 +517,14 @@ def health():
 def start_mdns(port=5000):
     """Broadcast service _smarthome._tcp trên LAN để Flutter tự discover."""
     try:
+        import socket as _sock
         from zeroconf import Zeroconf, ServiceInfo
-        import socket
         zc = Zeroconf()
-        local_ip = socket.gethostbyname(socket.gethostname())
+        local_ip = _get_lan_ip()
         info = ServiceInfo(
             "_smarthome._tcp.local.",
             "SmartHome AI Server._smarthome._tcp.local.",
-            addresses=[socket.inet_aton(local_ip)],
+            addresses=[_sock.inet_aton(local_ip)],
             port=port,
             properties={'version': '1.0', 'esp32': ESP32_IP},
         )
@@ -577,8 +557,8 @@ if __name__ == '__main__':
     zc, mdns_info = start_mdns(port=5000)
 
     print(f"🚀 AI Server: http://0.0.0.0:5000")
-    print(f"📹 MJPEG relay: http://<PC_IP>:5000/stream")
-    print(f"🔗 ESP32 source: http://{ESP32_IP}:{ESP32_PORT}/stream")
+    print(f"📹 ESP32 stream (Flutter): http://{ESP32_IP}:81/stream")
+    print(f"📸 ESP32 capture (AI):     http://{ESP32_IP}:{ESP32_CAPTURE_PORT}/capture")
     print(f"📡 MQTT: {MQTT_BROKER}:{MQTT_PORT}")
 
     # Chạy Flask trên thread riêng — không block stdout
