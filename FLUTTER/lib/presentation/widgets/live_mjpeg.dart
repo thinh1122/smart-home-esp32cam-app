@@ -62,34 +62,27 @@ class _LiveMjpegState extends State<LiveMjpeg> {
       _sub = res.stream.listen(
         (chunk) {
           buf.addAll(chunk);
-          // Luôn tìm frame MỚI NHẤT — bỏ qua các frame cũ tích tụ trong buffer
-          while (true) {
-            // Tìm SOI cuối cùng để lấy frame mới nhất
-            int lastSoi = -1;
-            for (int i = buf.length - 2; i >= 0; i--) {
-              if (buf[i] == _soi && buf[i + 1] == _soiMarker) {
-                lastSoi = i;
-                break;
-              }
-            }
-            if (lastSoi == -1) break;
 
-            // Tìm EOI sau SOI đó
-            int eoi = -1;
-            for (int i = lastSoi + 2; i < buf.length - 1; i++) {
-              if (buf[i] == _soi && buf[i + 1] == _eoiMarker) {
-                eoi = i + 2;
-                break;
-              }
-            }
-            if (eoi == -1) break;
-
-            // Có frame hoàn chỉnh — lấy và xóa buffer trước đó
-            final jpg = Uint8List.fromList(buf.sublist(lastSoi, eoi));
-            buf.removeRange(0, eoi);
-            if (mounted) setState(() => _frame = jpg);
-            break;
+          // Tìm SOI cuối cùng trong buffer — skip thẳng đến frame mới nhất
+          int lastSoi = -1;
+          for (int i = buf.length - 2; i >= 0; i--) {
+            if (buf[i] == _soi && buf[i + 1] == _soiMarker) { lastSoi = i; break; }
           }
+          if (lastSoi == -1) return;
+
+          // Bỏ hết dữ liệu trước frame mới nhất
+          if (lastSoi > 0) buf.removeRange(0, lastSoi);
+
+          // Tìm EOI của frame này
+          int eoi = -1;
+          for (int i = 2; i < buf.length - 1; i++) {
+            if (buf[i] == _soi && buf[i + 1] == _eoiMarker) { eoi = i + 2; break; }
+          }
+          if (eoi == -1) return; // frame chưa đủ, đợi chunk tiếp
+
+          final jpg = Uint8List.fromList(buf.sublist(0, eoi));
+          buf.removeRange(0, eoi);
+          if (mounted) setState(() => _frame = jpg);
         },
         onError: (e, st) {
           if (mounted) setState(() => _error = e);
