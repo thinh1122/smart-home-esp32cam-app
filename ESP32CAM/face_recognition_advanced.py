@@ -72,20 +72,12 @@ TOPIC_SYSTEM_LOG  = "home/system/log"
 # ============================================================
 # SHARED STATE
 # ============================================================
-lock              = threading.Lock()
-known_templates   = []
-known_names       = []
-known_info        = {}
-previous_frame    = None
-mqtt_client       = None
-mqtt_connected    = False
-
-# recognition state machine
-rec_state = {
-    'phase': 'idle',          # idle | face_detected | stabilizing | recognizing | cooldown
-    'stable_start': None,
-    'last_result_time': None,
-}
+lock             = threading.Lock()
+known_templates  = []
+known_names      = []
+known_info       = {}
+mqtt_client      = None
+mqtt_connected   = False
 
 # ============================================================
 # MQTT
@@ -192,18 +184,6 @@ def capture_frame():
 # IMAGE PROCESSING
 # ============================================================
 mp_face = mp.solutions.face_detection
-
-def detect_motion(frame):
-    global previous_frame
-    gray = cv2.GaussianBlur(cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY), (5, 5), 0)
-    gray = cv2.resize(gray, (160, 120))
-    if previous_frame is None:
-        previous_frame = gray
-        return False
-    diff = cv2.absdiff(previous_frame, gray)
-    _, thresh = cv2.threshold(diff, 25, 255, cv2.THRESH_BINARY)
-    previous_frame = gray
-    return cv2.countNonZero(thresh) > 500
 
 def detect_faces(frame):
     faces = []
@@ -620,16 +600,13 @@ def status():
         'esp32': f"{ESP32_IP}:{ESP32_CAPTURE_PORT}",
         'templates': count,
         'mqtt': mqtt_connected,
-        'recognition_phase': rec_state['phase'],
+        'workers': NUM_WORKERS,
     }), 200
 
 @app.route('/health', methods=['GET'])
 def health():
     return jsonify({'status': 'ok'}), 200
 
-# ============================================================
-# MJPEG RELAY ENDPOINT
-# Flutter kết nối vào đây — relay phân phối lại cho nhiều client
 # ============================================================
 # mDNS BROADCAST — Flutter tự tìm server, không cần nhập IP
 # ============================================================
