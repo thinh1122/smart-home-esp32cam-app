@@ -5,6 +5,7 @@ import '../../../core/theme/app_theme.dart';
 import '../../../core/config/app_config.dart';
 import '../../../core/services/mqtt_service.dart';
 import '../../../core/services/device_config_service.dart';
+import '../../../core/services/notification_service.dart';
 import '../../widgets/live_mjpeg.dart';
 
 class HomeDashboard extends StatefulWidget {
@@ -88,6 +89,19 @@ class _HomeDashboardState extends State<HomeDashboard> {
       _faceEventClearTimer = Timer(const Duration(seconds: 10), () {
         if (mounted) setState(() => _lastFaceEvent = null);
       });
+
+      if (topic == AppConfig.topicFaceResult && (data['matched'] as bool? ?? false)) {
+        final name = data['name'] as String? ?? '';
+        final role = data['role'] as String? ?? '';
+        final conf = data['confidence'] != null
+            ? '${((data['confidence'] as num) * 100).toStringAsFixed(0)}%'
+            : '';
+        _showBanner('Xin chào $name! Chào mừng về nhà 👋', AppColors.success);
+        NotificationService.instance.showMemberRecognized(name: name, role: role, confidence: conf);
+      } else if (topic == AppConfig.topicFaceAlert) {
+        _showBanner('CẢNH BÁO: Phát hiện người lạ!', AppColors.error);
+        NotificationService.instance.showStrangerAlert();
+      }
     });
 
     // Lắng nghe bbox khuôn mặt để vẽ overlay
@@ -135,6 +149,20 @@ class _HomeDashboardState extends State<HomeDashboard> {
   void _toggleDoor(bool v) {
     setState(() => _doorLocked = v);
     MQTTService().controlDoor('front_door', v ? 'LOCK' : 'UNLOCK');
+  }
+
+  void _showBanner(String msg, Color color) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(
+        content: Text(msg, style: const TextStyle(fontWeight: FontWeight.w600)),
+        backgroundColor: color,
+        duration: const Duration(seconds: 5),
+        behavior: SnackBarBehavior.floating,
+        margin: const EdgeInsets.all(16),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      ));
   }
 
   int get _lightsOn => [_livingRoomLight, _bedroomLight, _kitchenLight].where((v) => v).length;
