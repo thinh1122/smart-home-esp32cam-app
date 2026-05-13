@@ -57,7 +57,7 @@ MQTT_PORT   = 1883
 _NO_PROXY = {"http": "", "https": ""}
 
 # Recognition tuning
-CAPTURE_INTERVAL  = 0.3    # giây giữa mỗi lần lấy frame — 3 frame/s
+CAPTURE_INTERVAL  = 1.0    # giây giữa mỗi lần lấy frame — 1 frame/s
 NUM_WORKERS       = 3      # số AI worker chạy song song (có GPU nên để 3)
 MATCH_THRESHOLD   = 0.55   # cosine similarity tối thiểu
 COOLDOWN_SECONDS  = 8.0    # không publish result lại trong n giây
@@ -439,18 +439,18 @@ def _ai_worker(worker_id: int, frame_queue: _Q.Queue):
 
 
 def _capturer():
-    """Lấy frame liên tục, round-robin STRICT vào queue của từng worker.
+    """Lấy 1 frame/s, tìm worker rảnh theo thứ tự W0→W1→W2.
 
-    Mỗi frame chỉ đến đúng 1 worker theo thứ tự — không chuyển sang worker khác.
-    Nếu worker đó bận → drop frame đó, advance idx → worker tiếp theo nhận frame sau.
-    Đảm bảo: không bao giờ 2 worker xử lý cùng 1 frame.
+    - Nếu W0 rảnh → W0 xử lý
+    - Nếu W0 bận, W1 rảnh → W1 xử lý
+    - Nếu tất cả bận → drop frame, không đợi
+    - Đảm bảo 1 frame chỉ đến đúng 1 worker
     """
     queues = [_Q.Queue(maxsize=1) for _ in range(NUM_WORKERS)]
 
     for i, q in enumerate(queues):
         threading.Thread(target=_ai_worker, args=(i, q), daemon=True).start()
 
-    idx = 0
     print(f"📸 Capturer started — {NUM_WORKERS} workers, interval={CAPTURE_INTERVAL}s")
 
     while True:
@@ -462,16 +462,20 @@ def _capturer():
             continue
 
         frame_ts = int(t0 * 1000)
-        target = idx % NUM_WORKERS
 
-        try:
-            queues[target].put_nowait((frame, frame_ts))
-            print(f"📷 Frame → W{target}")
-        except _Q.Full:
-            # Worker này bận — drop frame, không chuyển sang worker khác
-            print(f"⏭ W{target} busy — drop frame")
+        # Tìm worker rảnh đầu tiên theo thứ tự W0 → W1 → W2
+        dispatched = False
+        for i, q in enumerate(queues):
+            try:
+                q.put_nowait((frame, frame_ts))
+                print(f"📷 Frame → W{i}")
+                dispatched = True
+                break
+            except _Q.Full:
+                continue  # worker này bận, thử cái tiếp theo
 
-        idx += 1  # luôn advance dù drop — frame tiếp theo vào worker tiếp theo
+        if not dispatched:
+            print("⏭ All workers busy — drop frame")
 
         elapsed = time.time() - t0
         sleep_t = max(0.0, CAPTURE_INTERVAL - elapsed)
