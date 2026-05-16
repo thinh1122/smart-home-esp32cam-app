@@ -131,26 +131,8 @@ class _AddDeviceScreenState extends State<AddDeviceScreen> with SingleTickerProv
           final result = await Navigator.push(context,
             MaterialPageRoute(builder: (_) => const BLEWiFiProvisioningScreen()));
           if (result == null || result['success'] != true) return;
-
-          final name = result['deviceName'] as String? ?? '';
-          if (name.startsWith('ESP32CAM')) {
-            if (mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-                content: Text('Camera đã kết nối thành công!'),
-                backgroundColor: Colors.green,
-              ));
-            }
-            await DatabaseHelper.instance.insertDevice({
-              'name': 'Camera cửa ra',
-              'device_type': 'camera',
-              'room': 'entrance',
-              'mqtt_topic': 'home/devices/camera/entrance',
-              'ble_mac': result['mac'] ?? '',
-            });
-          } else if (name.startsWith('ESP32S3_Relay')) {
-            if (!mounted) return;
-            await _showLightRegistrationFlow(result);
-          }
+          if (!mounted) return;
+          await _showDeviceTypePicker(result);
         },
         child: Container(
           width: double.infinity,
@@ -175,6 +157,123 @@ class _AddDeviceScreenState extends State<AddDeviceScreen> with SingleTickerProv
         ),
       ),
     );
+  }
+
+  Future<void> _showDeviceTypePicker(Map result) async {
+    final type = await showDialog<String>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => Dialog(
+        backgroundColor: AppColors.card,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.check_circle_rounded, color: Colors.greenAccent, size: 48),
+              const SizedBox(height: 12),
+              const Text('Kết nối thành công!',
+                style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 6),
+              const Text('Đây là thiết bị gì?',
+                style: TextStyle(color: AppColors.textSecondary, fontSize: 13)),
+              const SizedBox(height: 24),
+              // Camera option
+              GestureDetector(
+                onTap: () => Navigator.pop(ctx, 'camera'),
+                child: Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(18),
+                  decoration: BoxDecoration(
+                    color: AppColors.cameraColor.withOpacity(0.12),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: AppColors.cameraColor.withOpacity(0.35)),
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: AppColors.cameraColor.withOpacity(0.2),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Icon(Icons.videocam_rounded, color: AppColors.cameraColor, size: 26),
+                      ),
+                      const SizedBox(width: 14),
+                      const Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('Camera', style: TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.bold)),
+                          SizedBox(height: 2),
+                          Text('ESP32-CAM, camera an ninh', style: TextStyle(color: AppColors.textSecondary, fontSize: 12)),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+              // Light option
+              GestureDetector(
+                onTap: () => Navigator.pop(ctx, 'light'),
+                child: Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(18),
+                  decoration: BoxDecoration(
+                    color: AppColors.lightColor.withOpacity(0.12),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: AppColors.lightColor.withOpacity(0.35)),
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: AppColors.lightColor.withOpacity(0.2),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Icon(Icons.lightbulb_rounded, color: AppColors.lightColor, size: 26),
+                      ),
+                      const SizedBox(width: 14),
+                      const Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('Đèn', style: TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.bold)),
+                          SizedBox(height: 2),
+                          Text('ESP32-S3 + Relay, điều khiển đèn', style: TextStyle(color: AppColors.textSecondary, fontSize: 12)),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    if (type == null || !mounted) return;
+
+    if (type == 'camera') {
+      await DatabaseHelper.instance.insertDevice({
+        'name': 'Camera an ninh',
+        'device_type': 'camera',
+        'room': 'entrance',
+        'mqtt_topic': 'home/devices/camera/entrance',
+        'ble_mac': result['mac'] ?? '',
+      });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Camera đã được thêm thành công!'),
+          backgroundColor: Colors.green,
+        ));
+        Navigator.pop(context); // Quay về trang chủ
+      }
+    } else if (type == 'light') {
+      await _showLightRegistrationFlow(result);
+    }
   }
 
   Future<void> _showLightRegistrationFlow(Map result) async {

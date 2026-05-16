@@ -44,7 +44,8 @@
 #define POWER_INTERVAL_MS   2000
 
 #define BOOT_PIN            0        // Nút BOOT trên ESP32-S3 = GPIO0
-#define RESET_HOLD_MS       3000     // Giu 3s → xoa WiFi → BLE mode
+#define LED_PIN             2        // LED tich hop (chung voi RELAY_PIN neu board co)
+#define RESET_HOLD_MS       2000     // Giu 2s → nhay LED 3 lan → xoa WiFi → BLE mode
 
 // BLE UUIDs — giong ESP32-CAM de Flutter reuse
 #define SERVICE_UUID    "4fafc201-1fb5-459e-8fcc-c5c9c331914b"
@@ -307,21 +308,31 @@ bool connectMQTT() {
 // ============================================================
 // RESET BUTTON (BOOT = GPIO0, giu 3s → xoa WiFi → BLE mode)
 // ============================================================
+void blinkReset() {
+  // Nhay relay/LED 3 lan bao hieu reset
+  for (int i = 0; i < 3; i++) {
+    digitalWrite(RELAY_PIN, HIGH); delay(150);
+    digitalWrite(RELAY_PIN, LOW);  delay(150);
+  }
+}
+
 void checkResetButton() {
   if (digitalRead(BOOT_PIN) == LOW) {
     if (!bootPressed) {
       bootPressed    = true;
       bootPressStart = millis();
-      Serial.println("BOOT held — giu tiep 3s de reset WiFi...");
+      Serial.println("BOOT held — giu tiep 2s de reset WiFi...");
     } else if (millis() - bootPressStart >= RESET_HOLD_MS) {
-      Serial.println(">>> Reset WiFi! Xoa NVS -> khoi dong BLE...");
+      Serial.println(">>> Reset WiFi! Nhay 3 lan -> xoa NVS -> BLE mode...");
+      blinkReset();
       prefs.begin("wifi", false);
       prefs.clear();
       prefs.end();
-      delay(500);
+      delay(300);
       ESP.restart();
     }
   } else {
+    if (bootPressed) Serial.println("BOOT released (chua du 2s)");
     bootPressed = false;
   }
 }
