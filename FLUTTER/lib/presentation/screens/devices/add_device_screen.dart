@@ -129,7 +129,30 @@ class _AddDeviceScreenState extends State<AddDeviceScreen> with SingleTickerProv
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20),
       child: GestureDetector(
-        onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const BLEWiFiProvisioningScreen())),
+        onTap: () async {
+          final result = await Navigator.push(context,
+            MaterialPageRoute(builder: (_) => const BLEWiFiProvisioningScreen()));
+          if (result != null && result['success'] == true) {
+            final name = result['deviceName'] as String? ?? '';
+            String type, label;
+            if (name.startsWith('ESP32CAM')) {
+              type  = 'camera';
+              label = 'Camera cua ra';
+            } else if (name.startsWith('ESP32S3_Relay')) {
+              type  = 'light';
+              label = 'Den phong khach';
+            } else {
+              type  = 'unknown';
+              label = name;
+            }
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                content: Text('Ket noi thanh cong: $label ($type)'),
+                backgroundColor: Colors.green,
+              ));
+            }
+          }
+        },
         child: Container(
           width: double.infinity,
           padding: const EdgeInsets.symmetric(vertical: 18),

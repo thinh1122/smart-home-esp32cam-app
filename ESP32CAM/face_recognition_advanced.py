@@ -57,10 +57,10 @@ MQTT_PORT   = 1883
 _NO_PROXY = {"http": "", "https": ""}
 
 # Recognition tuning
-CAPTURE_INTERVAL  = 1.0    # giây giữa mỗi lần lấy frame — 1 frame/s
-NUM_WORKERS       = 3      # số AI worker chạy song song (có GPU nên để 3)
-MATCH_THRESHOLD   = 0.55   # cosine similarity tối thiểu
-COOLDOWN_SECONDS  = 8.0    # không publish result lại trong n giây
+CAPTURE_INTERVAL  = 1.0    # giây giữa mỗi lần lấy frame
+NUM_WORKERS       = 1      # 1 worker đủ — AI xử lý ~23ms, capture 1 frame/s
+MATCH_THRESHOLD   = 0.78   # cosine similarity tối thiểu
+COOLDOWN_SECONDS  = 6.0    # sau nhận diện thành công, dừng capture 6s
 
 # MQTT topics — phải khớp với AppConfig trong Flutter
 TOPIC_FACE_RESULT = "home/face_recognition/result"
@@ -165,19 +165,17 @@ def publish(topic, payload):
 # ESP32 xử lý /stream và /capture trên 2 handler riêng không block nhau
 # ============================================================
 def capture_frame():
-    """Lấy JPEG từ /capture ESP32 port 80 (server riêng, không tranh với stream port 81)."""
+    """Lấy JPEG từ /capture ESP32 port 80. Chỉ thử 1 lần — không retry flood ESP32."""
     url = f"http://{ESP32_IP}:{ESP32_CAPTURE_PORT}/capture"
-    for attempt in range(3):
-        try:
-            r = requests.get(url, timeout=4, proxies=_NO_PROXY)
-            if r.status_code == 200 and r.content:
-                arr = np.frombuffer(r.content, np.uint8)
-                frame = cv2.imdecode(arr, cv2.IMREAD_COLOR)
-                if frame is not None:
-                    return frame
-        except Exception as e:
-            print(f"⚠️ capture_frame attempt {attempt+1}/3: {e}")
-            time.sleep(0.5)
+    try:
+        r = requests.get(url, timeout=5, proxies=_NO_PROXY)
+        if r.status_code == 200 and r.content:
+            arr = np.frombuffer(r.content, np.uint8)
+            frame = cv2.imdecode(arr, cv2.IMREAD_COLOR)
+            if frame is not None:
+                return frame
+    except Exception as e:
+        print(f"⚠️ capture timeout — skip frame")
     return None
 
 # ============================================================
@@ -245,222 +243,130 @@ def compare_templates(t1, t2):
     score = float(np.dot(t1, t2))
     return max(0.0, min(1.0, score))
 
-def match_frame(frame):
-    """So khớp 1 frame với database. Trả về dict kết quả."""
-    faces = detect_faces(frame)
-    if not faces:
-        return None
-
-    best_face = max(faces, key=lambda f: f['score'])
-    templ = extract_template(frame, best_face['bbox'])
-    if templ is None:
-        return None
-
-    with lock:
-        lt, ln, li = list(known_templates), list(known_names), dict(known_info)
-
-    if not lt:
-        return {'matched': False, 'name': 'Người lạ', 'confidence': 0.0}
-
-    best_score, best_name = 0.0, None
-    for i, kt in enumerate(lt):
-        score = compare_templates(templ, kt)
-        if score > MATCH_THRESHOLD and score > best_score:
-            best_score, best_name = score, ln[i]
-
-    if best_name:
-        info = li.get(best_name, {})
-        return {
-            'matched': True,
-            'name': best_name,
-            'id': info.get('id', ''),
-            'role': info.get('role', ''),
-            'confidence': round(best_score, 3),
-            'ts': int(time.time() * 1000),
-        }
-    return {'matched': False, 'name': 'Người lạ', 'confidence': round(best_score, 3), 'ts': int(time.time() * 1000)}
-
 # ============================================================
-# PARALLEL RECOGNITION PIPELINE
-#
-# Kiến trúc:
-#   Capturer thread: lấy frame mỗi CAPTURE_INTERVAL giây
-#                    → round-robin vào queue của từng worker
-#   NUM_WORKERS AI workers: mỗi worker có MediaPipe riêng
-#                    → detect + match + publish độc lập
-#
-# Tránh flood MQTT bbox: chỉ publish bbox có ts mới nhất
-# Cooldown dùng shared atomic float — tất cả worker cùng check
+# RECOGNITION PIPELINE
 # ============================================================
 
-import queue as _Q
+detector = mp.solutions.face_detection.FaceDetection(
+    model_selection=1, min_detection_confidence=0.5
+)
 
-# Shared state giữa các worker — dùng lock để tránh race condition
-_result_lock      = threading.Lock()
-_last_result_time = [0.0]   # cooldown chung
-_bbox_lock        = threading.Lock()
-_last_bbox_ts     = [0]     # tránh publish bbox từ frame cũ hơn
-
-def _ai_worker(worker_id: int, frame_queue: _Q.Queue):
-    """1 AI worker — có MediaPipe instance riêng, chạy mãi."""
-    print(f"🤖 Worker-{worker_id} started")
-    detector = mp.solutions.face_detection.FaceDetection(
-        model_selection=1, min_detection_confidence=0.5
-    )
-
-    while True:
+def _drain_capture(duration: float):
+    """Trong thời gian cooldown vẫn gọi /capture mỗi 1s để ESP32 không tắc buffer."""
+    end = time.time() + duration
+    while time.time() < end:
         try:
-            frame, frame_ts = frame_queue.get(timeout=2)
-        except _Q.Empty:
-            continue
-
-        try:
-            ts = int(time.time() * 1000)
-
-            # Detect bằng MediaPipe instance riêng — thread-safe vì không share
-            rgb  = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            res  = detector.process(rgb)
-            fh, fw = frame.shape[:2]
-            faces = []
-            if res.detections:
-                for det in res.detections:
-                    b = det.location_data.relative_bounding_box
-                    x, y = int(b.xmin * fw), int(b.ymin * fh)
-                    w, h = int(b.width * fw), int(b.height * fh)
-                    mx, my = int(w * 0.2), int(h * 0.2)
-                    x, y = max(0, x - mx), max(0, y - my)
-                    w, h = min(fw - x, w + 2*mx), min(fh - y, h + 2*my)
-                    if w >= 40 and h >= 40:
-                        faces.append({'bbox': (x, y, w, h), 'score': float(det.score[0])})
-            # Fallback cascade nếu MediaPipe không thấy
-            if not faces:
-                cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
-                gray = cv2.equalizeHist(cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY))
-                for (x, y, w, h) in cascade.detectMultiScale(gray, 1.05, 3, minSize=(30, 30)):
-                    faces.append({'bbox': (x, y, int(w), int(h)), 'score': 0.7})
-
-            if not faces:
-                with _bbox_lock:
-                    if frame_ts > _last_bbox_ts[0]:
-                        _last_bbox_ts[0] = frame_ts
-                        do_clear = True
-                    else:
-                        do_clear = False
-                if do_clear:
-                    publish(TOPIC_FACE_BOX, {'clear': True, 'ts': ts})
-                    print(f"[W{worker_id}] 🚫 No face")
-                continue
-
-            best = max(faces, key=lambda f: f['score'])
-            x, y, w, h = best['bbox']
-
-            # Publish bbox chỉ nếu frame này mới hơn bbox đã publish
-            with _bbox_lock:
-                if frame_ts > _last_bbox_ts[0]:
-                    _last_bbox_ts[0] = frame_ts
-                    do_bbox = True
-                else:
-                    do_bbox = False
-            if do_bbox:
-                publish(TOPIC_FACE_BOX, {
-                    'x': round(x / fw, 4), 'y': round(y / fh, 4),
-                    'w': round(w / fw, 4), 'h': round(h / fh, 4),
-                    'ts': ts,
-                })
-            print(f"[W{worker_id}] 👤 score={best['score']:.2f}")
-
-            # Cooldown check lần 1 — tránh match nếu vừa publish gần đây
-            with _result_lock:
-                if time.time() - _last_result_time[0] < COOLDOWN_SECONDS:
-                    continue
-
-            # Match
-            templ = extract_template(frame, best['bbox'])
-            if templ is None:
-                continue
-
-            with lock:
-                lt, ln, li = list(known_templates), list(known_names), dict(known_info)
-
-            if not lt:
-                continue
-
-            best_score, best_name = 0.0, None
-            for i, kt in enumerate(lt):
-                score = compare_templates(templ, kt)
-                if score > MATCH_THRESHOLD and score > best_score:
-                    best_score, best_name = score, ln[i]
-
-            # Cooldown check lần 2 + update atomic — tránh 2 worker publish cùng lúc
-            with _result_lock:
-                now = time.time()
-                if now - _last_result_time[0] < COOLDOWN_SECONDS:
-                    continue
-                _last_result_time[0] = now
-
-            ts2 = int(now * 1000)
-            if best_name:
-                info = li.get(best_name, {})
-                print(f"[W{worker_id}] ✅ {best_name} ({best_score*100:.0f}%)")
-                publish(TOPIC_FACE_RESULT, {
-                    'matched': True, 'name': best_name,
-                    'id': info.get('id', ''), 'role': info.get('role', ''),
-                    'confidence': round(best_score, 3), 'ts': ts2,
-                })
-            else:
-                print(f"[W{worker_id}] ⚠️ Stranger ({best_score*100:.0f}%)")
-                publish(TOPIC_FACE_ALERT, {
-                    'matched': False, 'name': 'Người lạ',
-                    'confidence': round(best_score, 3), 'ts': ts2,
-                })
-
-        except Exception as e:
-            print(f"[W{worker_id}] ❌ Error: {e}")
-
+            requests.get(
+                f"http://{ESP32_IP}:{ESP32_CAPTURE_PORT}/capture",
+                timeout=2, proxies=_NO_PROXY
+            )
+        except Exception:
+            pass
+        time.sleep(CAPTURE_INTERVAL)
 
 def _capturer():
-    """Lấy 1 frame/s, tìm worker rảnh theo thứ tự W0→W1→W2.
-
-    - Nếu W0 rảnh → W0 xử lý
-    - Nếu W0 bận, W1 rảnh → W1 xử lý
-    - Nếu tất cả bận → drop frame, không đợi
-    - Đảm bảo 1 frame chỉ đến đúng 1 worker
+    """Single-loop pipeline:
+    - Lấy 1 frame mỗi CAPTURE_INTERVAL giây
+    - Detect + match ngay trong loop
+    - Sau khi nhận diện thành công (matched hoặc stranger) → sleep COOLDOWN_SECONDS
+      tránh nhận diện lại cùng 1 khuôn mặt nhiều lần liên tiếp
     """
-    queues = [_Q.Queue(maxsize=1) for _ in range(NUM_WORKERS)]
-
-    for i, q in enumerate(queues):
-        threading.Thread(target=_ai_worker, args=(i, q), daemon=True).start()
-
-    print(f"📸 Capturer started — {NUM_WORKERS} workers, interval={CAPTURE_INTERVAL}s")
+    print(f"📸 Capturer started — interval={CAPTURE_INTERVAL}s, cooldown={COOLDOWN_SECONDS}s")
 
     while True:
         t0 = time.time()
         frame = capture_frame()
         if frame is None:
-            print(f"❌ Capture failed — {ESP32_IP}:{ESP32_CAPTURE_PORT}")
-            time.sleep(1)
+            # ESP32 bận — thử lại sau 0.5s, không sleep 1s full
+            time.sleep(0.5)
             continue
 
-        frame_ts = int(t0 * 1000)
+        ts = int(time.time() * 1000)
 
-        # Tìm worker rảnh đầu tiên theo thứ tự W0 → W1 → W2
-        dispatched = False
-        for i, q in enumerate(queues):
-            try:
-                q.put_nowait((frame, frame_ts))
-                print(f"📷 Frame → W{i}")
-                dispatched = True
-                break
-            except _Q.Full:
-                continue  # worker này bận, thử cái tiếp theo
+        # ── Detect ──────────────────────────────────────────
+        rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        res = detector.process(rgb)
+        fh, fw = frame.shape[:2]
+        faces = []
+        if res.detections:
+            for det in res.detections:
+                b = det.location_data.relative_bounding_box
+                x, y = int(b.xmin * fw), int(b.ymin * fh)
+                w, h = int(b.width * fw), int(b.height * fh)
+                mx, my = int(w * 0.2), int(h * 0.2)
+                x, y = max(0, x - mx), max(0, y - my)
+                w, h = min(fw - x, w + 2*mx), min(fh - y, h + 2*my)
+                if w >= 40 and h >= 40:
+                    faces.append({'bbox': (x, y, w, h), 'score': float(det.score[0])})
+        if not faces:
+            cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
+            gray = cv2.equalizeHist(cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY))
+            for (x, y, w, h) in cascade.detectMultiScale(gray, 1.05, 3, minSize=(30, 30)):
+                faces.append({'bbox': (x, y, int(w), int(h)), 'score': 0.7})
 
-        if not dispatched:
-            print("⏭ All workers busy — drop frame")
+        if not faces:
+            publish(TOPIC_FACE_BOX, {'clear': True, 'ts': ts})
+            print("🚫 No face")
+            elapsed = time.time() - t0
+            time.sleep(max(0.0, CAPTURE_INTERVAL - elapsed))
+            continue
 
-        elapsed = time.time() - t0
-        sleep_t = max(0.0, CAPTURE_INTERVAL - elapsed)
-        if sleep_t > 0:
-            time.sleep(sleep_t)
+        best = max(faces, key=lambda f: f['score'])
+        x, y, w, h = best['bbox']
+        print(f"👤 face score={best['score']:.2f}")
+
+        publish(TOPIC_FACE_BOX, {
+            'x': round(x / fw, 4), 'y': round(y / fh, 4),
+            'w': round(w / fw, 4), 'h': round(h / fh, 4),
+            'ts': ts,
+        })
+
+        # ── Match ────────────────────────────────────────────
+        templ = extract_template(frame, best['bbox'])
+        if templ is None:
+            elapsed = time.time() - t0
+            time.sleep(max(0.0, CAPTURE_INTERVAL - elapsed))
+            continue
+
+        with lock:
+            lt, ln, li = list(known_templates), list(known_names), dict(known_info)
+
+        if not lt:
+            elapsed = time.time() - t0
+            time.sleep(max(0.0, CAPTURE_INTERVAL - elapsed))
+            continue
+
+        best_score, best_name = 0.0, None
+        scores_debug = []
+        for i, kt in enumerate(lt):
+            score = compare_templates(templ, kt)
+            scores_debug.append(f"{ln[i]}={score:.3f}")
+            if score > MATCH_THRESHOLD and score > best_score:
+                best_score, best_name = score, ln[i]
+        print(f"🔍 scores: {', '.join(scores_debug)} | threshold={MATCH_THRESHOLD}")
+
+        now = time.time()
+        ts2 = int(now * 1000)
+        if best_name:
+            info = li.get(best_name, {})
+            print(f"✅ {best_name} ({best_score*100:.0f}%) — cooldown {COOLDOWN_SECONDS}s")
+            publish(TOPIC_FACE_RESULT, {
+                'matched': True, 'name': best_name,
+                'id': info.get('id', ''), 'role': info.get('role', ''),
+                'confidence': round(best_score, 3), 'ts': ts2,
+            })
+            # Cooldown — vẫn capture để drain ESP32 buffer, không xử lý AI
+            _drain_capture(COOLDOWN_SECONDS)
+        else:
+            print(f"⚠️ Stranger ({best_score*100:.0f}%) — cooldown {COOLDOWN_SECONDS}s")
+            publish(TOPIC_FACE_ALERT, {
+                'matched': False, 'name': 'Người lạ',
+                'confidence': round(best_score, 3), 'ts': ts2,
+            })
+            _drain_capture(COOLDOWN_SECONDS)
+            continue
+
+        # Sau cooldown không cần sleep thêm — tiếp tục loop ngay
 
 
 def _start_recognition_worker():
@@ -600,7 +506,7 @@ def status():
         'esp32': f"{ESP32_IP}:{ESP32_CAPTURE_PORT}",
         'templates': count,
         'mqtt': mqtt_connected,
-        'workers': NUM_WORKERS,
+        'workers': 1,
     }), 200
 
 @app.route('/health', methods=['GET'])
@@ -646,7 +552,7 @@ if __name__ == '__main__':
     load_known_faces()
     init_mqtt()
 
-    # Recognition: gọi /capture để nhận diện, độc lập với stream
+    # Recognition pipeline
     _start_recognition_worker()
 
     # mDNS: Flutter tự tìm thấy server trên LAN, không cần nhập IP

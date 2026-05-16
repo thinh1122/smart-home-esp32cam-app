@@ -33,9 +33,13 @@ class _HomeDashboardState extends State<HomeDashboard> {
   Map<String, dynamic>? _faceBbox;
   Timer? _bboxClearTimer;
 
+  // Power data từ ACS712 ESP32-S3
+  double _livingRoomWatt = 0;
+
   StreamSubscription? _deviceSub;
   StreamSubscription? _faceSub;
   StreamSubscription? _bboxSub;
+  StreamSubscription? _powerSub;
 
   @override
   void initState() {
@@ -54,6 +58,7 @@ class _HomeDashboardState extends State<HomeDashboard> {
     _deviceSub?.cancel();
     _faceSub?.cancel();
     _bboxSub?.cancel();
+    _powerSub?.cancel();
     _retryTimer?.cancel();
     _faceEventClearTimer?.cancel();
     _bboxClearTimer?.cancel();
@@ -102,6 +107,17 @@ class _HomeDashboardState extends State<HomeDashboard> {
         _showBanner('CẢNH BÁO: Phát hiện người lạ!', AppColors.error);
         NotificationService.instance.showStrangerAlert();
       }
+    });
+
+    // Lắng nghe power data từ ACS712 ESP32-S3
+    _powerSub = MQTTService().devicePowerStream.listen((event) {
+      if (!mounted) return;
+      final topic = event['topic'] as String;
+      final data  = event['data'] as Map<String, dynamic>;
+      final watt  = (data['watt'] as num?)?.toDouble() ?? 0;
+      setState(() {
+        if (topic.contains('living_room')) _livingRoomWatt = watt;
+      });
     });
 
     // Lắng nghe bbox khuôn mặt để vẽ overlay
@@ -278,6 +294,13 @@ class _HomeDashboardState extends State<HomeDashboard> {
           const SizedBox(width: 10),
           _buildStatChip(Icons.wifi_rounded, _mqttConnected ? AppColors.info : AppColors.textSecondary,
               _mqttConnected ? 'On' : 'Off', 'MQTT'),
+          const SizedBox(width: 10),
+          _buildStatChip(
+            Icons.bolt_rounded,
+            _livingRoomWatt > 0 ? AppColors.warning : AppColors.textSecondary,
+            '${_livingRoomWatt.toStringAsFixed(0)}W',
+            'Công suất',
+          ),
           const SizedBox(width: 10),
           _buildFaceChip(),
         ],

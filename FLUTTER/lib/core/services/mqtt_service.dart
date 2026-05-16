@@ -18,11 +18,14 @@ class MQTTService {
   final _deviceStateController = StreamController<Map<String, dynamic>>.broadcast();
   final _systemLogsController = StreamController<Map<String, dynamic>>.broadcast();
   final _faceBboxController = StreamController<Map<String, dynamic>>.broadcast();
+  final _devicePowerController = StreamController<Map<String, dynamic>>.broadcast();
 
   Stream<Map<String, dynamic>> get faceRecognitionStream => _faceRecognitionController.stream;
   Stream<Map<String, dynamic>> get deviceStateStream => _deviceStateController.stream;
   Stream<Map<String, dynamic>> get systemLogsStream => _systemLogsController.stream;
   Stream<Map<String, dynamic>> get faceBboxStream => _faceBboxController.stream;
+  // Power stream: {topic, data:{watt, current, state, ts}}
+  Stream<Map<String, dynamic>> get devicePowerStream => _devicePowerController.stream;
 
   bool get isConnected => _isConnected;
 
@@ -71,6 +74,7 @@ class MQTTService {
       AppConfig.topicDeviceState,
       AppConfig.topicLogs,
       'home/server/ip',
+      'home/devices/+/+/power',  // ACS712 power data từ ESP32-S3
     ];
     for (var topic in topics) {
       _client!.subscribe(topic, MqttQos.atLeastOnce);
@@ -118,6 +122,8 @@ class MQTTService {
           _faceBboxController.add(data);
         } else if (topic.startsWith('home/face_recognition/')) {
           _faceRecognitionController.add({'topic': topic, 'data': data});
+        } else if (topic.endsWith('/power')) {
+          _devicePowerController.add({'topic': topic, 'data': data});
         } else if (topic.startsWith('home/devices/')) {
           _deviceStateController.add({'topic': topic, 'data': data});
         } else if (topic.startsWith('home/logs/')) {
@@ -150,5 +156,6 @@ class MQTTService {
     _deviceStateController.close();
     _systemLogsController.close();
     _faceBboxController.close();
+    _devicePowerController.close();
   }
 }

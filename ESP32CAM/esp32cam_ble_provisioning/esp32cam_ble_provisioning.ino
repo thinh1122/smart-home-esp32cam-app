@@ -49,7 +49,7 @@
 // ============================================================
 // Stream config
 // ============================================================
-#define STREAM_FPS        8           // 8fps — đủ mượt, giảm tải WiFi
+#define STREAM_FPS        5           // 5fps — giảm bandwidth, nhường chỗ cho /capture
 #define FRAME_DELAY_MS    (1000 / STREAM_FPS)
 
 #define PART_BOUNDARY "123456789000000000000987654321"
@@ -105,11 +105,6 @@ static esp_err_t stream_handler(httpd_req_t* req) {
   TickType_t lastFrame = xTaskGetTickCount();
 
   while (true) {
-    // Flush frame cũ còn trong sensor buffer — lấy và bỏ ngay
-    fb = esp_camera_fb_get();
-    if (fb) { esp_camera_fb_return(fb); fb = nullptr; }
-
-    // Lấy frame mới nhất
     fb = esp_camera_fb_get();
     if (!fb) { vTaskDelay(pdMS_TO_TICKS(50)); continue; }
 
@@ -125,12 +120,18 @@ static esp_err_t stream_handler(httpd_req_t* req) {
 
     vTaskDelayUntil(&lastFrame, pdMS_TO_TICKS(FRAME_DELAY_MS));
   }
+
   return ESP_OK;
 }
 
 // /capture → single JPEG snapshot (used by Python AI server)
 static esp_err_t capture_handler(httpd_req_t* req) {
-  camera_fb_t* fb = esp_camera_fb_get();
+  // Thử tối đa 20 lần × 50ms = 1000ms để lấy frame
+  camera_fb_t* fb = nullptr;
+  for (int i = 0; i < 20 && !fb; i++) {
+    fb = esp_camera_fb_get();
+    if (!fb) vTaskDelay(pdMS_TO_TICKS(50));
+  }
   if (!fb) { httpd_resp_send_500(req); return ESP_FAIL; }
   httpd_resp_set_type(req, "image/jpeg");
   httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
@@ -163,7 +164,7 @@ void startCameraServer() {
   cfg1.ctrl_port        = 32768;
   cfg1.max_uri_handlers = 2;
   cfg1.stack_size       = 8192;
-  cfg1.max_open_sockets = 1;
+  cfg1.max_open_sockets = 1;  // chỉ Flutter dùng port 81
   cfg1.lru_purge_enable = true;
   cfg1.recv_wait_timeout  = 10;
   cfg1.send_wait_timeout  = 10;
@@ -224,7 +225,7 @@ bool initCamera() {
   cfg.pixel_format = PIXFORMAT_JPEG;
   cfg.frame_size   = FRAMESIZE_QVGA;   // 320x240
   cfg.jpeg_quality = 12;              // 12=cân bằng chất lượng/size (~20KB/frame)
-  cfg.fb_count     = 2;
+  cfg.fb_count     = 4;               // 4 buffer: stream + capture cùng lúc không block nhau
   cfg.fb_location  = CAMERA_FB_IN_PSRAM;
   cfg.grab_mode    = CAMERA_GRAB_LATEST; // luôn lấy frame mới nhất từ sensor
 
@@ -236,7 +237,7 @@ bool initCamera() {
   sensor_t* s = esp_camera_sensor_get();
   if (s) {
     s->set_framesize(s, FRAMESIZE_QVGA);
-    s->set_quality(s, 8);
+    s->set_quality(s, 12);  // khớp với cfg.jpeg_quality — không để override
     s->set_brightness(s, 1);
     s->set_saturation(s, -1);   // lower saturation → smaller JPEG
     s->set_whitebal(s, 1);

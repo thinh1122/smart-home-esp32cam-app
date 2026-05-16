@@ -241,7 +241,7 @@ class _BLEWiFiProvisioningScreenState extends State<BLEWiFiProvisioningScreen> {
         Navigator.pop(context, {
           'success': true,
           'deviceIP': ip,
-          'deviceName': _connectedDevice?.platformName ?? 'ESP32CAM',
+          'deviceName': _connectedDevice?.platformName ?? 'ESP32Device',
           'wifiSSID': _selectedSSID ?? _ssidCtrl.text,
         });
       }
