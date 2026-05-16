@@ -223,7 +223,13 @@ class _BLEWiFiProvisioningScreenState extends State<BLEWiFiProvisioningScreen> {
       await Future.delayed(const Duration(milliseconds: 500));
       await _passChar!.write(_passCtrl.text.codeUnits);
       _showSnack('Config sent! ESP32 connecting to WiFi...', AppColors.info);
-      // ESP32 will notify via _statusSub when connected
+
+      // Fallback: neu ESP32 restart truoc khi notify kip -> timeout 12s van pop success
+      Future.delayed(const Duration(seconds: 12), () {
+        if (mounted && _step != 5) {
+          _onConnectedSuccessfully('unknown');
+        }
+      });
     } catch (e) {
       setState(() => _isConfiguring = false);
       _showError('Send error: $e');

@@ -377,7 +377,13 @@ void loop() {
       prefs.putString("ssid", rxSSID);
       prefs.putString("pass", rxPass);
       prefs.end();
-      delay(1500);
+      // Gui IP ve Flutter truoc khi restart de Flutter nhan duoc
+      if (pStatus) {
+        String s = "connected|" + WiFi.localIP().toString();
+        pStatus->setValue(s.c_str());
+        pStatus->notify();
+        delay(2000);  // Cho Flutter xu ly notify
+      }
       Serial.println("Restarting...");
       ESP.restart();
     }
