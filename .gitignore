@@ -34,3 +34,12 @@ Thumbs.db
 # Data/Models (if they are large)
 **/faces_registry.db
 **/haarcascades/
+
+# iOS build artifacts
+FLUTTER/*.zip
+FLUTTER/ios-*/
+FLUTTER/ios-release-*/
+FLUTTER/ios-sideload-*/
+
+# Claude settings
+.claude/

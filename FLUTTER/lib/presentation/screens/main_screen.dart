@@ -3,7 +3,6 @@ import '../../core/theme/app_theme.dart';
 import 'dashboard/home_dashboard.dart';
 import 'lights/living_room_light_screen.dart';
 import 'members/members_screen.dart';
-import 'devices/add_device_screen.dart';
 import 'devices/devices_screen.dart';
 
 class MainScreen extends StatefulWidget {

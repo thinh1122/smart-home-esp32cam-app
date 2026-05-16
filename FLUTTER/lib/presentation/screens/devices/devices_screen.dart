@@ -2,7 +2,9 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/services/mqtt_service.dart';
+import '../../../core/services/database_helper.dart';
 import '../lights/living_room_light_screen.dart';
+import 'add_device_screen.dart';
 
 class DevicesScreen extends StatefulWidget {
   const DevicesScreen({super.key});
@@ -12,13 +14,9 @@ class DevicesScreen extends StatefulWidget {
 }
 
 class _DevicesScreenState extends State<DevicesScreen> {
-  // Trang thai tung thiet bi
-  final Map<String, bool>  _states = {
-    'living_room': false,
-  };
-  final Map<String, double> _watts = {
-    'living_room': 0,
-  };
+  List<Map<String, dynamic>> _devices = [];
+  final Map<String, bool>   _states = {};
+  final Map<String, double> _watts  = {};
 
   StreamSubscription? _stateSub;
   StreamSubscription? _powerSub;
@@ -26,6 +24,7 @@ class _DevicesScreenState extends State<DevicesScreen> {
   @override
   void initState() {
     super.initState();
+    _loadDevices();
 
     _stateSub = MQTTService().deviceStateStream.listen((msg) {
       final topic = msg['topic'] as String;
@@ -35,9 +34,7 @@ class _DevicesScreenState extends State<DevicesScreen> {
         if (parts.length >= 4) {
           final room = parts[3];
           final on   = (data['state'] as String?)?.toUpperCase() == 'ON';
-          if (mounted && _states.containsKey(room)) {
-            setState(() => _states[room] = on);
-          }
+          if (mounted) setState(() => _states[room] = on);
         }
       }
     });
@@ -49,11 +46,14 @@ class _DevicesScreenState extends State<DevicesScreen> {
       if (parts.length >= 4) {
         final room = parts[3];
         final watt = (data['watt'] as num?)?.toDouble() ?? 0;
-        if (mounted && _watts.containsKey(room)) {
-          setState(() => _watts[room] = watt);
-        }
+        if (mounted) setState(() => _watts[room] = watt);
       }
     });
+  }
+
+  Future<void> _loadDevices() async {
+    final rows = await DatabaseHelper.instance.getAllDevices();
+    if (mounted) setState(() => _devices = rows);
   }
 
   @override
@@ -70,6 +70,9 @@ class _DevicesScreenState extends State<DevicesScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final lights  = _devices.where((d) => d['device_type'] == 'light').toList();
+    final cameras = _devices.where((d) => d['device_type'] == 'camera').toList();
+
     return Scaffold(
       backgroundColor: AppColors.bg,
       body: SafeArea(
@@ -78,38 +81,136 @@ class _DevicesScreenState extends State<DevicesScreen> {
           children: [
             _buildHeader(),
             const SizedBox(height: 8),
-            _buildSummary(),
+            _buildSummary(lights),
             const SizedBox(height: 24),
-            const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 20),
-              child: Text('Thiet bi', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
-            ),
-            const SizedBox(height: 14),
             Expanded(
-              child: ListView(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                children: [
-                  _DeviceCard(
-                    name:     'Den phong khach',
-                    room:     'living_room',
-                    type:     'Den thong minh',
-                    icon:     Icons.lightbulb_rounded,
-                    color:    AppColors.lightColor,
-                    isOn:     _states['living_room'] ?? false,
-                    watt:     _watts['living_room']  ?? 0,
-                    onToggle: (v) => _toggle('living_room', v),
-                    onTap:    () => Navigator.push(context,
-                      MaterialPageRoute(builder: (_) => const LivingRoomLightScreen())),
+              child: _devices.isEmpty
+                ? _buildEmpty()
+                : ListView(
+                    padding: const EdgeInsets.symmetric(horizontal: 20),
+                    children: [
+                      if (lights.isNotEmpty) ...[
+                        _sectionLabel('Đèn thông minh', Icons.lightbulb_rounded, AppColors.lightColor),
+                        const SizedBox(height: 12),
+                        ...lights.map((d) => _buildLightCard(d)),
+                      ],
+                      if (cameras.isNotEmpty) ...[
+                        const SizedBox(height: 20),
+                        _sectionLabel('Camera', Icons.videocam_rounded, AppColors.cameraColor),
+                        const SizedBox(height: 12),
+                        ...cameras.map((d) => _buildCameraCard(d)),
+                      ],
+                      const SizedBox(height: 24),
+                    ],
                   ),
-                  const SizedBox(height: 14),
-                  // Them thiet bi khac o day
-                ],
-              ),
             ),
           ],
         ),
       ),
     );
+  }
+
+  Widget _buildEmpty() {
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.devices_other_rounded, color: Colors.white24, size: 64),
+          const SizedBox(height: 16),
+          const Text('Chưa có thiết bị nào', style: TextStyle(color: Colors.white54, fontSize: 15)),
+          const SizedBox(height: 8),
+          const Text('Nhấn + để thêm thiết bị mới', style: TextStyle(color: AppColors.textDim, fontSize: 13)),
+        ],
+      ),
+    );
+  }
+
+  Widget _sectionLabel(String label, IconData icon, Color color) {
+    return Row(
+      children: [
+        Icon(icon, color: color, size: 16),
+        const SizedBox(width: 8),
+        Text(label, style: TextStyle(color: color, fontSize: 14, fontWeight: FontWeight.bold)),
+      ],
+    );
+  }
+
+  Widget _buildLightCard(Map<String, dynamic> d) {
+    final room  = d['room'] as String;
+    final isOn  = _states[room] ?? false;
+    final watt  = _watts[room]  ?? 0.0;
+    final color = AppColors.lightColor;
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 14),
+      child: _DeviceCard(
+        name:     d['name'] as String,
+        room:     room,
+        type:     _lightTypeLabel(d['light_type'] as String? ?? ''),
+        icon:     Icons.lightbulb_rounded,
+        color:    color,
+        isOn:     isOn,
+        watt:     watt,
+        onToggle: (v) => _toggle(room, v),
+        onTap:    () => Navigator.push(context,
+          MaterialPageRoute(builder: (_) => const LivingRoomLightScreen())),
+        onDelete: () => _deleteDevice(d['id'] as int, room),
+      ),
+    );
+  }
+
+  Widget _buildCameraCard(Map<String, dynamic> d) {
+    final color = AppColors.cameraColor;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 14),
+      child: _DeviceCard(
+        name:       d['name'] as String,
+        room:       d['room'] as String,
+        type:       'Camera an ninh',
+        icon:       Icons.videocam_rounded,
+        color:      color,
+        isOn:       true,
+        watt:       0,
+        showSwitch: false,
+        onToggle:   (_) {},
+        onTap:      () {},
+        onDelete:   () => _deleteDevice(d['id'] as int, d['room'] as String),
+      ),
+    );
+  }
+
+  String _lightTypeLabel(String key) {
+    const map = {
+      'main':       'Đèn chính',
+      'sleep':      'Đèn ngủ',
+      'decoration': 'Đèn trang trí',
+      'desk':       'Đèn bàn',
+      'ceiling':    'Đèn trần',
+      'outdoor':    'Đèn ngoài trời',
+    };
+    return map[key] ?? 'Đèn thông minh';
+  }
+
+  Future<void> _deleteDevice(int id, String room) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.card,
+        title: const Text('Xoá thiết bị?', style: TextStyle(color: Colors.white)),
+        content: const Text('Thiết bị sẽ bị xoá khỏi danh sách.', style: TextStyle(color: AppColors.textSecondary)),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Huỷ')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Xoá', style: TextStyle(color: Colors.redAccent)),
+          ),
+        ],
+      ),
+    );
+    if (ok == true) {
+      await DatabaseHelper.instance.deleteDevice(id);
+      _loadDevices();
+    }
   }
 
   Widget _buildHeader() {
@@ -121,13 +222,17 @@ class _DevicesScreenState extends State<DevicesScreen> {
           const Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('Thiet bi', style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold)),
+              Text('Thiết bị', style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold)),
               SizedBox(height: 2),
-              Text('Quan ly thiet bi nha ban', style: TextStyle(color: AppColors.textSecondary, fontSize: 13)),
+              Text('Quản lý thiết bị nhà bạn', style: TextStyle(color: AppColors.textSecondary, fontSize: 13)),
             ],
           ),
           IconButton(
-            onPressed: () => Navigator.pushNamed(context, '/add_device'),
+            onPressed: () async {
+              await Navigator.push(context,
+                MaterialPageRoute(builder: (_) => const AddDeviceScreen()));
+              _loadDevices();
+            },
             icon: const Icon(Icons.add_circle_outline_rounded, color: Colors.white70, size: 26),
           ),
         ],
@@ -135,17 +240,17 @@ class _DevicesScreenState extends State<DevicesScreen> {
     );
   }
 
-  Widget _buildSummary() {
-    final onCount  = _states.values.where((v) => v).length;
-    final total    = _states.length;
+  Widget _buildSummary(List<Map<String, dynamic>> lights) {
+    final onCount   = lights.where((d) => _states[d['room']] == true).length;
+    final total     = lights.length;
     final totalWatt = _watts.values.fold(0.0, (a, b) => a + b);
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20),
       child: Row(
         children: [
-          _summaryChip(Icons.devices_rounded,    '$onCount/$total bat', AppColors.accentLight),
+          _summaryChip(Icons.devices_rounded, '$onCount/$total bật', AppColors.accentLight),
           const SizedBox(width: 10),
-          _summaryChip(Icons.bolt_rounded,        '${totalWatt.round()}W', AppColors.lightColor),
+          _summaryChip(Icons.bolt_rounded, '${totalWatt.round()}W', AppColors.lightColor),
         ],
       ),
     );
@@ -171,9 +276,7 @@ class _DevicesScreenState extends State<DevicesScreen> {
   }
 }
 
-// ============================================================
-// Device Card Widget
-// ============================================================
+// ── Device Card ────────────────────────────────────────────────
 class _DeviceCard extends StatelessWidget {
   final String   name, room, type;
   final IconData icon;
@@ -182,6 +285,8 @@ class _DeviceCard extends StatelessWidget {
   final double   watt;
   final ValueChanged<bool> onToggle;
   final VoidCallback       onTap;
+  final VoidCallback       onDelete;
+  final bool               showSwitch;
 
   const _DeviceCard({
     required this.name,
@@ -193,12 +298,15 @@ class _DeviceCard extends StatelessWidget {
     required this.watt,
     required this.onToggle,
     required this.onTap,
+    required this.onDelete,
+    this.showSwitch = true,
   });
 
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
       onTap: onTap,
+      onLongPress: onDelete,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 250),
         padding: const EdgeInsets.all(18),
@@ -211,7 +319,6 @@ class _DeviceCard extends StatelessWidget {
         ),
         child: Row(
           children: [
-            // Icon
             AnimatedContainer(
               duration: const Duration(milliseconds: 250),
               width: 52, height: 52,
@@ -222,7 +329,6 @@ class _DeviceCard extends StatelessWidget {
               child: Icon(icon, color: isOn ? color : Colors.white38, size: 26),
             ),
             const SizedBox(width: 16),
-            // Info
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -242,7 +348,7 @@ class _DeviceCard extends StatelessWidget {
                       ),
                       const SizedBox(width: 5),
                       Text(
-                        isOn ? 'Dang bat' : 'Tat',
+                        isOn ? 'Đang bật' : 'Tắt',
                         style: TextStyle(
                           color: isOn ? AppColors.success : AppColors.textDim,
                           fontSize: 11,
@@ -262,8 +368,7 @@ class _DeviceCard extends StatelessWidget {
                 ],
               ),
             ),
-            // Toggle
-            Switch(
+            if (showSwitch) Switch(
               value: isOn,
               onChanged: onToggle,
               activeColor: color,

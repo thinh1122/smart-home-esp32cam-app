@@ -1,0 +1,65 @@
+name: Build Flutter APK
+
+on:
+  push:
+    branches: [ master ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.24.5'
+          channel: stable
+          cache: true
+
+      - name: Get dependencies
+        working-directory: FLUTTER
+        run: flutter pub get
+
+      - name: Build APK (release)
+        working-directory: FLUTTER
+        run: flutter build apk --release --no-tree-shake-icons
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: smart-home-release-${{ github.run_number }}
+          path: FLUTTER/build/app/outputs/flutter-apk/app-release.apk
+          retention-days: 30
+
+      - name: Create GitHub Release
+        if: github.ref == 'refs/heads/master'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: build-${{ github.run_number }}
+          name: "Smart Home APK #${{ github.run_number }}"
+          body: |
+            **Auto build từ commit:** ${{ github.sha }}
+            **Branch:** ${{ github.ref_name }}
+
+            ### Cài đặt
+            1. Download file `app-release.apk` bên dưới
+            2. Trên điện thoại: Cài đặt → Bảo mật → Cho phép cài từ nguồn không rõ
+            3. Mở file APK để cài
+
+            ### Thay đổi
+            ${{ github.event.head_commit.message }}
+          files: FLUTTER/build/app/outputs/flutter-apk/app-release.apk
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

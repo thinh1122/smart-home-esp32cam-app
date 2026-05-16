@@ -16,7 +16,7 @@ class DatabaseHelper {
   Future<Database> _initDB(String filePath) async {
     final dbPath = await getDatabasesPath();
     final path = join(dbPath, filePath);
-    return await openDatabase(path, version: 1, onCreate: _createDB);
+    return await openDatabase(path, version: 2, onCreate: _createDB, onUpgrade: _onUpgrade);
   }
 
   Future _createDB(Database db, int version) async {
@@ -37,6 +37,35 @@ class DatabaseHelper {
         imageUrl TEXT
       )
     ''');
+    await db.execute('''
+      CREATE TABLE devices (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        device_type TEXT NOT NULL,
+        room TEXT NOT NULL,
+        light_type TEXT,
+        mqtt_topic TEXT,
+        ble_mac TEXT,
+        created_at TEXT NOT NULL
+      )
+    ''');
+  }
+
+  Future _onUpgrade(Database db, int oldVersion, int newVersion) async {
+    if (oldVersion < 2) {
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS devices (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          name TEXT NOT NULL,
+          device_type TEXT NOT NULL,
+          room TEXT NOT NULL,
+          light_type TEXT,
+          mqtt_topic TEXT,
+          ble_mac TEXT,
+          created_at TEXT NOT NULL
+        )
+      ''');
+    }
   }
 
   Future<void> insertMember(Map<String, dynamic> member) async {
@@ -76,5 +105,29 @@ class DatabaseHelper {
         SELECT id FROM logs ORDER BY timestamp DESC LIMIT ?
       )
     ''', [keepCount]);
+  }
+
+  // ── Devices ──────────────────────────────────────────────
+  Future<int> insertDevice(Map<String, dynamic> device) async {
+    final db = await instance.database;
+    return await db.insert('devices', {
+      ...device,
+      'created_at': DateTime.now().toIso8601String(),
+    }, conflictAlgorithm: ConflictAlgorithm.replace);
+  }
+
+  Future<List<Map<String, dynamic>>> getAllDevices() async {
+    final db = await instance.database;
+    return await db.query('devices', orderBy: 'room, light_type');
+  }
+
+  Future<List<Map<String, dynamic>>> getDevicesByRoom(String room) async {
+    final db = await instance.database;
+    return await db.query('devices', where: 'room = ?', whereArgs: [room]);
+  }
+
+  Future<void> deleteDevice(int id) async {
+    final db = await instance.database;
+    await db.delete('devices', where: 'id = ?', whereArgs: [id]);
   }
 }
