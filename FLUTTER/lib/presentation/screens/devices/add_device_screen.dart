@@ -280,16 +280,15 @@ class _AddDeviceScreenState extends State<AddDeviceScreen> with SingleTickerProv
     final room = await _showRoomPicker();
     if (room == null || !mounted) return;
 
-    final lightType = await _showLightTypePicker(room['label'] as String);
+    final lightType = await _showLightTypePicker(room['label']!);
     if (lightType == null || !mounted) return;
 
-    final topic = 'home/devices/light/${room['key']}';
     await DatabaseHelper.instance.insertDevice({
       'name': '${lightType['label']} - ${room['label']}',
       'device_type': 'light',
       'room': room['key'],
       'light_type': lightType['key'],
-      'mqtt_topic': topic,
+      'mqtt_topic': 'home/devices/light/${room['key']}',
       'ble_mac': result['mac'] ?? '',
     });
 
@@ -301,17 +300,17 @@ class _AddDeviceScreenState extends State<AddDeviceScreen> with SingleTickerProv
     }
   }
 
-  Future<Map<String, String>?> _showRoomPicker() {
+  Future<_PickResult?> _showRoomPicker() {
     final rooms = [
-      {'key': 'living_room',  'label': 'Phòng khách',  'emoji': '🛋️',  'color': const Color(0xFF6C63FF)},
-      {'key': 'bedroom',      'label': 'Phòng ngủ',    'emoji': '🛏️',  'color': const Color(0xFF43B89C)},
-      {'key': 'kitchen',      'label': 'Nhà bếp',      'emoji': '🍳',  'color': const Color(0xFFFF9F43)},
-      {'key': 'bathroom',     'label': 'Nhà vệ sinh',  'emoji': '🚿',  'color': const Color(0xFF54A0FF)},
-      {'key': 'bedroom2',     'label': 'Phòng ngủ 2',  'emoji': '🛏️',  'color': const Color(0xFF5F27CD)},
-      {'key': 'garage',       'label': 'Nhà xe',       'emoji': '🚗',  'color': const Color(0xFF636E72)},
+      _PickResult('living_room', 'Phòng khách', '🛋️', const Color(0xFF6C63FF)),
+      _PickResult('bedroom',     'Phòng ngủ',   '🛏️', const Color(0xFF43B89C)),
+      _PickResult('kitchen',     'Nhà bếp',     '🍳', const Color(0xFFFF9F43)),
+      _PickResult('bathroom',    'Nhà vệ sinh', '🚿', const Color(0xFF54A0FF)),
+      _PickResult('bedroom2',    'Phòng ngủ 2', '🛏️', const Color(0xFF5F27CD)),
+      _PickResult('garage',      'Nhà xe',      '🚗', const Color(0xFF636E72)),
     ];
 
-    return showDialog<Map<String, String>>(
+    return showDialog<_PickResult>(
       context: context,
       builder: (ctx) => Dialog(
         backgroundColor: AppColors.card,
@@ -333,30 +332,27 @@ class _AddDeviceScreenState extends State<AddDeviceScreen> with SingleTickerProv
                 mainAxisSpacing: 12,
                 childAspectRatio: 1.3,
                 physics: const NeverScrollableScrollPhysics(),
-                children: rooms.map((r) {
-                  final color = r['color'] as Color;
-                  return GestureDetector(
-                    onTap: () => Navigator.pop(ctx, {'key': r['key'] as String, 'label': r['label'] as String}),
-                    child: Container(
-                      decoration: BoxDecoration(
-                        color: color.withOpacity(0.12),
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(color: color.withOpacity(0.3)),
-                      ),
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Text(r['emoji'] as String, style: const TextStyle(fontSize: 28)),
-                          const SizedBox(height: 6),
-                          Text(r['label'] as String,
-                            style: TextStyle(color: color, fontSize: 12, fontWeight: FontWeight.bold),
-                            textAlign: TextAlign.center,
-                          ),
-                        ],
-                      ),
+                children: rooms.map((r) => GestureDetector(
+                  onTap: () => Navigator.pop(ctx, r),
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: r.color.withOpacity(0.12),
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: r.color.withOpacity(0.3)),
                     ),
-                  );
-                }).toList(),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Text(r.emoji, style: const TextStyle(fontSize: 28)),
+                        const SizedBox(height: 6),
+                        Text(r.label,
+                          style: TextStyle(color: r.color, fontSize: 12, fontWeight: FontWeight.bold),
+                          textAlign: TextAlign.center,
+                        ),
+                      ],
+                    ),
+                  ),
+                )).toList(),
               ),
               const SizedBox(height: 8),
               TextButton(
@@ -370,17 +366,17 @@ class _AddDeviceScreenState extends State<AddDeviceScreen> with SingleTickerProv
     );
   }
 
-  Future<Map<String, String>?> _showLightTypePicker(String roomLabel) {
+  Future<_PickResult?> _showLightTypePicker(String roomLabel) {
     final types = [
-      {'key': 'main',       'label': 'Đèn chính',    'icon': Icons.lightbulb_rounded,       'color': const Color(0xFFFFD93D)},
-      {'key': 'sleep',      'label': 'Đèn ngủ',      'icon': Icons.nights_stay_rounded,     'color': const Color(0xFF6C63FF)},
-      {'key': 'decoration', 'label': 'Đèn trang trí','icon': Icons.auto_awesome_rounded,    'color': const Color(0xFFFF6B9D)},
-      {'key': 'desk',       'label': 'Đèn bàn',      'icon': Icons.desk_rounded,            'color': const Color(0xFF54A0FF)},
-      {'key': 'ceiling',    'label': 'Đèn trần',     'icon': Icons.light_rounded,           'color': const Color(0xFFFF9F43)},
-      {'key': 'outdoor',    'label': 'Đèn ngoài trời','icon': Icons.outdoor_grill_rounded,  'color': const Color(0xFF43B89C)},
+      _PickResult('main',       'Đèn chính',     '💡', const Color(0xFFFFD93D), icon: Icons.lightbulb_rounded),
+      _PickResult('sleep',      'Đèn ngủ',       '🌙', const Color(0xFF6C63FF), icon: Icons.nights_stay_rounded),
+      _PickResult('decoration', 'Đèn trang trí', '✨', const Color(0xFFFF6B9D), icon: Icons.auto_awesome_rounded),
+      _PickResult('desk',       'Đèn bàn',       '🔦', const Color(0xFF54A0FF), icon: Icons.desk_rounded),
+      _PickResult('ceiling',    'Đèn trần',      '☀️', const Color(0xFFFF9F43), icon: Icons.light_rounded),
+      _PickResult('outdoor',    'Đèn ngoài trời','🌿', const Color(0xFF43B89C), icon: Icons.park_rounded),
     ];
 
-    return showDialog<Map<String, String>>(
+    return showDialog<_PickResult>(
       context: context,
       builder: (ctx) => Dialog(
         backgroundColor: AppColors.card,
@@ -402,32 +398,29 @@ class _AddDeviceScreenState extends State<AddDeviceScreen> with SingleTickerProv
                 separatorBuilder: (_, __) => const SizedBox(height: 8),
                 itemBuilder: (_, i) {
                   final t = types[i];
-                  final color = t['color'] as Color;
-                  final icon = t['icon'] as IconData;
                   return GestureDetector(
-                    onTap: () => Navigator.pop(ctx, {'key': t['key'] as String, 'label': t['label'] as String}),
+                    onTap: () => Navigator.pop(ctx, t),
                     child: Container(
                       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
                       decoration: BoxDecoration(
-                        color: color.withOpacity(0.1),
+                        color: t.color.withOpacity(0.1),
                         borderRadius: BorderRadius.circular(14),
-                        border: Border.all(color: color.withOpacity(0.25)),
+                        border: Border.all(color: t.color.withOpacity(0.25)),
                       ),
                       child: Row(
                         children: [
                           Container(
                             padding: const EdgeInsets.all(8),
                             decoration: BoxDecoration(
-                              color: color.withOpacity(0.15),
+                              color: t.color.withOpacity(0.15),
                               borderRadius: BorderRadius.circular(10),
                             ),
-                            child: Icon(icon, color: color, size: 20),
+                            child: Icon(t.icon ?? Icons.lightbulb_rounded, color: t.color, size: 20),
                           ),
                           const SizedBox(width: 14),
-                          Text(t['label'] as String,
-                            style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w600)),
+                          Text(t.label, style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w600)),
                           const Spacer(),
-                          Icon(Icons.chevron_right_rounded, color: color.withOpacity(0.6), size: 20),
+                          Icon(Icons.chevron_right_rounded, color: t.color.withOpacity(0.6), size: 20),
                         ],
                       ),
                     ),
@@ -568,4 +561,13 @@ class _Cat {
   final IconData icon;
   final Color color;
   const _Cat(this.name, this.subtitle, this.icon, this.color);
+}
+
+class _PickResult {
+  final String key, label, emoji;
+  final Color color;
+  final IconData? icon;
+  const _PickResult(this.key, this.label, this.emoji, this.color, {this.icon});
+  // Dùng như Map để tương thích code cũ
+  String? operator [](String k) => k == 'key' ? key : k == 'label' ? label : null;
 }
