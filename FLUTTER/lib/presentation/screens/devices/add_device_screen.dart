@@ -219,6 +219,8 @@ class _AddDeviceScreenState extends State<AddDeviceScreen> with SingleTickerProv
         if (Navigator.canPop(context)) Navigator.pop(context);
       }
     } else if (type == 'light') {
+      await Future.delayed(const Duration(milliseconds: 400));
+      if (!mounted) return;
       await _showLightRegistrationFlow(result);
     }
   }
@@ -262,9 +264,13 @@ class _AddDeviceScreenState extends State<AddDeviceScreen> with SingleTickerProv
       backgroundColor: AppColors.card,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
-      builder: (ctx) => _RoomPickerSheet(),
+      builder: (ctx) => const _RoomPickerSheet(),
     );
     if (room == null || !mounted) return;
+
+    // Chờ dismiss animation xong hoàn toàn trên iOS
+    await Future.delayed(const Duration(milliseconds: 400));
+    if (!mounted) return;
 
     final lightType = await showModalBottomSheet<_PickResult>(
       context: context,
