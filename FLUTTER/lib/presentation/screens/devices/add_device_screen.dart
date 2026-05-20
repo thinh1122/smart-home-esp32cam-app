@@ -171,8 +171,9 @@ class _AddDeviceScreenState extends State<AddDeviceScreen> with SingleTickerProv
   Future<void> _showDeviceTypePicker(Map result) async {
     final type = await showModalBottomSheet<String>(
       context: context,
-      isDismissible: true,
-      enableDrag: true,
+      isDismissible: false,
+      enableDrag: false,
+      useSafeArea: true,
       backgroundColor: AppColors.card,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
@@ -193,6 +194,11 @@ class _AddDeviceScreenState extends State<AddDeviceScreen> with SingleTickerProv
             _typeOption(ctx, 'camera', 'Camera', 'ESP32-CAM, camera an ninh', Icons.videocam_rounded, AppColors.cameraColor),
             const SizedBox(height: 12),
             _typeOption(ctx, 'light', 'Đèn', 'ESP32-S3 + Relay, điều khiển đèn', Icons.lightbulb_rounded, AppColors.lightColor),
+            const SizedBox(height: 8),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Huỷ', style: TextStyle(color: AppColors.textSecondary)),
+            ),
           ],
         ),
       ),
@@ -260,12 +266,14 @@ class _AddDeviceScreenState extends State<AddDeviceScreen> with SingleTickerProv
       context: context,
       backgroundColor: AppColors.card,
       isScrollControlled: true,
+      isDismissible: false,
+      enableDrag: false,
+      useSafeArea: true,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
       builder: (ctx) => const _RoomPickerSheet(),
     );
     if (room == null || !mounted) return;
 
-    // Chờ dismiss animation xong hoàn toàn trên iOS
     await Future.delayed(const Duration(milliseconds: 500));
     if (!mounted) return;
 
@@ -273,6 +281,9 @@ class _AddDeviceScreenState extends State<AddDeviceScreen> with SingleTickerProv
       context: context,
       backgroundColor: AppColors.card,
       isScrollControlled: true,
+      isDismissible: false,
+      enableDrag: false,
+      useSafeArea: true,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
       builder: (ctx) => _LightTypePickerSheet(roomLabel: room.label),
     );
