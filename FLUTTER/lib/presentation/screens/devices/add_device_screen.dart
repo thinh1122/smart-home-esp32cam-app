@@ -127,30 +127,16 @@ class _AddDeviceScreenState extends State<AddDeviceScreen> with SingleTickerProv
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20),
       child: GestureDetector(
-        onLongPress: () async {
-          // Test nhanh không cần BLE
-          final type = await Navigator.push<String>(context,
-            MaterialPageRoute(builder: (_) => const _DeviceTypeScreen()));
-          debugPrint('Test type: $type');
-          if (type == null || !mounted) return;
-          if (type == 'light') {
-            final room = await Navigator.push<_PickResult>(context,
-              MaterialPageRoute(builder: (_) => const _RoomPickerScreen()));
-            debugPrint('Test room: ${room?.key}');
-          }
-        },
         onTap: () async {
           try {
             final result = await Navigator.push(context,
               MaterialPageRoute(builder: (_) => const BLEWiFiProvisioningScreen()));
-            debugPrint('BLE result: $result');
             if (result == null || result['success'] != true) return;
             if (!mounted) return;
 
             // Push screen chọn loại thiết bị
             final type = await Navigator.push<String>(context,
               MaterialPageRoute(builder: (_) => const _DeviceTypeScreen()));
-            debugPrint('Device type selected: $type');
             if (type == null || !mounted) return;
 
             if (type == 'camera') {
@@ -173,7 +159,6 @@ class _AddDeviceScreenState extends State<AddDeviceScreen> with SingleTickerProv
               // Push screen chọn phòng
               final room = await Navigator.push<_PickResult>(context,
                 MaterialPageRoute(builder: (_) => const _RoomPickerScreen()));
-              debugPrint('Room selected: ${room?.key}');
               if (room == null || !mounted) return;
 
               // Push screen chọn loại đèn
