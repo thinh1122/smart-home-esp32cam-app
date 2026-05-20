@@ -133,10 +133,9 @@ class _AddDeviceScreenState extends State<AddDeviceScreen> with SingleTickerProv
               MaterialPageRoute(builder: (_) => const BLEWiFiProvisioningScreen()));
             if (result == null || result['success'] != true) return;
             if (!mounted) return;
-            // Chờ frame render xong sau khi BLEScreen đóng mới mở bottom sheet
-            WidgetsBinding.instance.addPostFrameCallback((_) async {
-              if (mounted) await _showDeviceTypePicker(result);
-            });
+            await Future.delayed(const Duration(milliseconds: 300));
+            if (!mounted) return;
+            await _showDeviceTypePicker(result);
           } catch (e) {
             if (mounted) {
               ScaffoldMessenger.of(context).showSnackBar(
@@ -200,6 +199,14 @@ class _AddDeviceScreenState extends State<AddDeviceScreen> with SingleTickerProv
     );
 
     if (type == null || !mounted) return;
+
+    // Debug: hien thi type nhan duoc
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Đã chọn: $type'), duration: const Duration(seconds: 2)));
+    }
+    await Future.delayed(const Duration(milliseconds: 500));
+    if (!mounted) return;
 
     if (type == 'camera') {
       await DatabaseHelper.instance.insertDevice({
