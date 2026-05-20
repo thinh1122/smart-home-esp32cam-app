@@ -398,9 +398,12 @@ class _DeviceTypeScreen extends StatelessWidget {
 
   Widget _typeOption(BuildContext context, String value, String title, String subtitle,
       IconData icon, Color color) {
-    return GestureDetector(
-      onTap: () => Navigator.pop(context, value),
-      child: Container(
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: () => Navigator.pop(context, value),
+        borderRadius: BorderRadius.circular(20),
+        child: Container(
         width: double.infinity,
         padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
@@ -428,6 +431,7 @@ class _DeviceTypeScreen extends StatelessWidget {
             Icon(Icons.chevron_right_rounded, color: color.withOpacity(0.6), size: 24),
           ],
         ),
+      ),
       ),
     );
   }
@@ -478,23 +482,27 @@ class _RoomPickerScreen extends StatelessWidget {
                   crossAxisSpacing: 14,
                   mainAxisSpacing: 14,
                   childAspectRatio: 1.3,
-                  children: _rooms.map((r) => GestureDetector(
-                    onTap: () => Navigator.pop(context, r),
-                    child: Container(
-                      decoration: BoxDecoration(
-                        color: r.color.withOpacity(0.12),
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(color: r.color.withOpacity(0.3)),
-                      ),
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Text(r.emoji, style: const TextStyle(fontSize: 32)),
-                          const SizedBox(height: 8),
-                          Text(r.label,
-                              style: TextStyle(color: r.color, fontSize: 13, fontWeight: FontWeight.bold),
-                              textAlign: TextAlign.center),
-                        ],
+                  children: _rooms.map((r) => Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      onTap: () => Navigator.pop(context, r),
+                      borderRadius: BorderRadius.circular(20),
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: r.color.withOpacity(0.12),
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(color: r.color.withOpacity(0.3)),
+                        ),
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Text(r.emoji, style: const TextStyle(fontSize: 32)),
+                            const SizedBox(height: 8),
+                            Text(r.label,
+                                style: TextStyle(color: r.color, fontSize: 13, fontWeight: FontWeight.bold),
+                                textAlign: TextAlign.center),
+                          ],
+                        ),
                       ),
                     ),
                   )).toList(),
@@ -554,28 +562,32 @@ class _LightTypePickerScreen extends StatelessWidget {
                   separatorBuilder: (_, __) => const SizedBox(height: 10),
                   itemBuilder: (ctx, i) {
                     final t = _types[i];
-                    return GestureDetector(
-                      onTap: () => Navigator.pop(context, t),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
-                        decoration: BoxDecoration(
-                          color: t.color.withOpacity(0.1),
-                          borderRadius: BorderRadius.circular(16),
-                          border: Border.all(color: t.color.withOpacity(0.25)),
-                        ),
-                        child: Row(
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.all(10),
-                              decoration: BoxDecoration(color: t.color.withOpacity(0.15), borderRadius: BorderRadius.circular(12)),
-                              child: Icon(t.icon ?? Icons.lightbulb_rounded, color: t.color, size: 22),
-                            ),
-                            const SizedBox(width: 16),
-                            Text(t.label,
-                                style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w600)),
-                            const Spacer(),
-                            Icon(Icons.chevron_right_rounded, color: t.color.withOpacity(0.6), size: 22),
-                          ],
+                    return Material(
+                      color: Colors.transparent,
+                      child: InkWell(
+                        onTap: () => Navigator.pop(context, t),
+                        borderRadius: BorderRadius.circular(16),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
+                          decoration: BoxDecoration(
+                            color: t.color.withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(color: t.color.withOpacity(0.25)),
+                          ),
+                          child: Row(
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.all(10),
+                                decoration: BoxDecoration(color: t.color.withOpacity(0.15), borderRadius: BorderRadius.circular(12)),
+                                child: Icon(t.icon ?? Icons.lightbulb_rounded, color: t.color, size: 22),
+                              ),
+                              const SizedBox(width: 16),
+                              Text(t.label,
+                                  style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w600)),
+                              const Spacer(),
+                              Icon(Icons.chevron_right_rounded, color: t.color.withOpacity(0.6), size: 22),
+                            ],
+                          ),
                         ),
                       ),
                     );
