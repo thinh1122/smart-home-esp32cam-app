@@ -18,11 +18,11 @@ class _LivingRoomLightScreenState extends State<LivingRoomLightScreen> {
   double _brightness = 0.82;
   Timer? _brightnessDebounce;
 
-  // Timer tắt đèn
+  // Timer
   Timer?    _countdownTimer;
-  Duration? _timerDuration;
-  Duration  _remaining = Duration.zero;
+  Duration  _remaining   = Duration.zero;
   bool      _timerActive = false;
+  bool      _timerTurnOn = false; // false = hẹn tắt, true = hẹn bật
 
   @override
   void dispose() {
@@ -34,7 +34,6 @@ class _LivingRoomLightScreenState extends State<LivingRoomLightScreen> {
   void _toggleLight(bool v) {
     setState(() => _isOn = v);
     MQTTService().controlLight(widget.room, v);
-    if (!v) _cancelTimer();
   }
 
   void _publishBrightness(double value) {
@@ -48,43 +47,44 @@ class _LivingRoomLightScreenState extends State<LivingRoomLightScreen> {
   }
 
   // ── Timer logic ──────────────────────────────────────────────
-  void _startTimer(Duration duration) {
+  void _startTimer(Duration duration, bool turnOn) {
     _countdownTimer?.cancel();
     setState(() {
-      _timerDuration = duration;
-      _remaining     = duration;
-      _timerActive   = true;
+      _remaining   = duration;
+      _timerActive = true;
+      _timerTurnOn = turnOn;
     });
     _countdownTimer = Timer.periodic(const Duration(seconds: 1), (t) {
       if (!mounted) { t.cancel(); return; }
-      final newRemaining = _remaining - const Duration(seconds: 1);
-      if (newRemaining <= Duration.zero) {
+      final next = _remaining - const Duration(seconds: 1);
+      if (next <= Duration.zero) {
         t.cancel();
-        _toggleLight(false);
+        final action = turnOn ? true : false;
+        _toggleLight(action);
         setState(() { _timerActive = false; _remaining = Duration.zero; });
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('Đèn đã tắt theo hẹn giờ'),
-          backgroundColor: Colors.blueGrey,
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(turnOn ? 'Đèn đã bật theo hẹn giờ' : 'Đèn đã tắt theo hẹn giờ'),
+          backgroundColor: turnOn ? Colors.green : Colors.blueGrey,
         ));
       } else {
-        setState(() => _remaining = newRemaining);
+        setState(() => _remaining = next);
       }
     });
   }
 
   void _cancelTimer() {
     _countdownTimer?.cancel();
-    setState(() { _timerActive = false; _remaining = Duration.zero; _timerDuration = null; });
+    setState(() { _timerActive = false; _remaining = Duration.zero; });
   }
 
   void _showTimerPicker() {
     final options = [
-      _TimerOption('15 phút',  const Duration(minutes: 15),  Icons.alarm_rounded),
-      _TimerOption('30 phút',  const Duration(minutes: 30),  Icons.alarm_rounded),
-      _TimerOption('1 giờ',    const Duration(hours: 1),     Icons.alarm_rounded),
-      _TimerOption('2 giờ',    const Duration(hours: 2),     Icons.alarm_rounded),
-      _TimerOption('4 giờ',    const Duration(hours: 4),     Icons.alarm_rounded),
-      _TimerOption('8 giờ',    const Duration(hours: 8),     Icons.alarm_rounded),
+      _TimerOption('15 phút', const Duration(minutes: 15), Icons.alarm_rounded),
+      _TimerOption('30 phút', const Duration(minutes: 30), Icons.alarm_rounded),
+      _TimerOption('1 giờ',   const Duration(hours: 1),    Icons.alarm_rounded),
+      _TimerOption('2 giờ',   const Duration(hours: 2),    Icons.alarm_rounded),
+      _TimerOption('4 giờ',   const Duration(hours: 4),    Icons.alarm_rounded),
+      _TimerOption('8 giờ',   const Duration(hours: 8),    Icons.alarm_rounded),
     ];
 
     showModalBottomSheet(
@@ -95,9 +95,10 @@ class _LivingRoomLightScreenState extends State<LivingRoomLightScreen> {
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
       builder: (ctx) => _TimerPickerSheet(
-        onSelected: (duration) {
+        currentlyOn: _isOn,
+        onSelected: (duration, turnOn) {
           Navigator.pop(ctx);
-          _startTimer(duration);
+          _startTimer(duration, turnOn);
         },
         presets: options,
       ),
@@ -280,7 +281,7 @@ class _LivingRoomLightScreenState extends State<LivingRoomLightScreen> {
                 const SizedBox(width: 14),
                 Expanded(child: _ctrlBtn(
                   Icons.timer_rounded, 'HẸN GIỜ', _timerActive,
-                  _isOn ? _showTimerPicker : null,
+                  _showTimerPicker,
                 )),
                 const SizedBox(width: 14),
                 Expanded(child: _ctrlBtn(
@@ -323,8 +324,8 @@ class _LivingRoomLightScreenState extends State<LivingRoomLightScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('Hẹn giờ tắt đèn',
-                      style: TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold)),
+                  Text(_timerTurnOn ? 'Hẹn giờ bật đèn' : 'Hẹn giờ tắt đèn',
+                      style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold)),
                   const SizedBox(height: 4),
                   Text(
                     'Còn lại: ${_formatRemaining(_remaining)}',
@@ -391,9 +392,10 @@ class _TimerOption {
 }
 
 class _TimerPickerSheet extends StatefulWidget {
-  final void Function(Duration) onSelected;
+  final void Function(Duration, bool turnOn) onSelected;
   final List<_TimerOption> presets;
-  const _TimerPickerSheet({required this.onSelected, required this.presets});
+  final bool currentlyOn;
+  const _TimerPickerSheet({required this.onSelected, required this.presets, required this.currentlyOn});
 
   @override
   State<_TimerPickerSheet> createState() => _TimerPickerSheetState();
@@ -401,8 +403,16 @@ class _TimerPickerSheet extends StatefulWidget {
 
 class _TimerPickerSheetState extends State<_TimerPickerSheet> {
   bool _showCustom = false;
-  int _customHour = 0;
-  int _customMin  = 30;
+  int  _customHour = 0;
+  int  _customMin  = 30;
+  late bool _turnOn; // hẹn bật hay tắt
+
+  @override
+  void initState() {
+    super.initState();
+    // Mặc định: đèn đang bật → hẹn tắt, đèn đang tắt → hẹn bật
+    _turnOn = !widget.currentlyOn;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -419,11 +429,80 @@ class _TimerPickerSheetState extends State<_TimerPickerSheet> {
             Center(child: Container(width: 40, height: 4,
                 decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(2)))),
             const SizedBox(height: 20),
-            const Text('Hẹn giờ tắt đèn',
-                style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+            Text(_turnOn ? 'Hẹn giờ bật đèn' : 'Hẹn giờ tắt đèn',
+                style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
             const SizedBox(height: 4),
-            const Text('Đèn sẽ tự động tắt sau thời gian chọn',
-                style: TextStyle(color: AppColors.textSecondary, fontSize: 13)),
+            Text(_turnOn ? 'Đèn sẽ tự động bật sau thời gian chọn' : 'Đèn sẽ tự động tắt sau thời gian chọn',
+                style: const TextStyle(color: AppColors.textSecondary, fontSize: 13)),
+            const SizedBox(height: 20),
+
+            // Bật / Tắt toggle
+            Container(
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.06),
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: GestureDetector(
+                      onTap: () => setState(() => _turnOn = false),
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 200),
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        decoration: BoxDecoration(
+                          color: !_turnOn ? Colors.blueGrey.withOpacity(0.4) : Colors.transparent,
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(
+                            color: !_turnOn ? Colors.blueGrey.withOpacity(0.6) : Colors.transparent,
+                          ),
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.power_off_rounded,
+                                color: !_turnOn ? Colors.white : Colors.white38, size: 18),
+                            const SizedBox(width: 8),
+                            Text('Hẹn tắt',
+                                style: TextStyle(
+                                  color: !_turnOn ? Colors.white : Colors.white38,
+                                  fontWeight: FontWeight.bold, fontSize: 14)),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                  Expanded(
+                    child: GestureDetector(
+                      onTap: () => setState(() => _turnOn = true),
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 200),
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        decoration: BoxDecoration(
+                          color: _turnOn ? AppColors.accentDim.withOpacity(0.6) : Colors.transparent,
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(
+                            color: _turnOn ? AppColors.accentLight.withOpacity(0.6) : Colors.transparent,
+                          ),
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.power_rounded,
+                                color: _turnOn ? AppColors.accentLight : Colors.white38, size: 18),
+                            const SizedBox(width: 8),
+                            Text('Hẹn bật',
+                                style: TextStyle(
+                                  color: _turnOn ? AppColors.accentLight : Colors.white38,
+                                  fontWeight: FontWeight.bold, fontSize: 14)),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
             const SizedBox(height: 20),
 
             // Preset options
@@ -433,7 +512,7 @@ class _TimerPickerSheetState extends State<_TimerPickerSheet> {
                 color: Colors.transparent,
                 child: InkWell(
                   borderRadius: BorderRadius.circular(14),
-                  onTap: () => widget.onSelected(o.duration),
+                  onTap: () => widget.onSelected(o.duration, _turnOn),
                   child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
                     decoration: BoxDecoration(
@@ -560,7 +639,7 @@ class _TimerPickerSheetState extends State<_TimerPickerSheet> {
                       child: ElevatedButton(
                         onPressed: (_customHour == 0 && _customMin == 0) ? null : () {
                           final duration = Duration(hours: _customHour, minutes: _customMin);
-                          widget.onSelected(duration);
+                          widget.onSelected(duration, _turnOn);
                         },
                         style: ElevatedButton.styleFrom(
                           backgroundColor: AppColors.accentDim,
@@ -569,7 +648,7 @@ class _TimerPickerSheetState extends State<_TimerPickerSheet> {
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                         ),
                         child: Text(
-                          'Đặt hẹn giờ ${_customHour}h ${_customMin.toString().padLeft(2,'0')}m',
+                          '${_turnOn ? 'Hẹn bật' : 'Hẹn tắt'} sau ${_customHour}h ${_customMin.toString().padLeft(2,'0')}m',
                           style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
                         ),
                       ),
