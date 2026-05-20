@@ -141,10 +141,6 @@ class _AddDeviceScreenState extends State<AddDeviceScreen> with SingleTickerProv
             }
           }
         },
-        // TEST: nhấn giữ để thêm thiết bị test không cần BLE
-        onLongPress: () async {
-          await _showDeviceTypePicker({'mac': 'test'});
-        },
         child: Container(
           width: double.infinity,
           padding: const EdgeInsets.symmetric(vertical: 18),
