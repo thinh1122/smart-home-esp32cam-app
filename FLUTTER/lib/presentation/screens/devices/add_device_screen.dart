@@ -200,14 +200,6 @@ class _AddDeviceScreenState extends State<AddDeviceScreen> with SingleTickerProv
 
     if (type == null || !mounted) return;
 
-    // Debug: hien thi type nhan duoc
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Đã chọn: $type'), duration: const Duration(seconds: 2)));
-    }
-    await Future.delayed(const Duration(milliseconds: 500));
-    if (!mounted) return;
-
     if (type == 'camera') {
       await DatabaseHelper.instance.insertDevice({
         'name': 'Camera an ninh',
@@ -226,8 +218,6 @@ class _AddDeviceScreenState extends State<AddDeviceScreen> with SingleTickerProv
         if (Navigator.canPop(context)) Navigator.pop(context);
       }
     } else if (type == 'light') {
-      await Future.delayed(const Duration(milliseconds: 400));
-      if (!mounted) return;
       await _showLightRegistrationFlow(result);
     }
   }
@@ -276,7 +266,7 @@ class _AddDeviceScreenState extends State<AddDeviceScreen> with SingleTickerProv
     if (room == null || !mounted) return;
 
     // Chờ dismiss animation xong hoàn toàn trên iOS
-    await Future.delayed(const Duration(milliseconds: 400));
+    await Future.delayed(const Duration(milliseconds: 500));
     if (!mounted) return;
 
     final lightType = await showModalBottomSheet<_PickResult>(
