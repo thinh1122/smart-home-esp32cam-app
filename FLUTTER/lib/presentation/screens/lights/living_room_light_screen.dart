@@ -402,263 +402,417 @@ class _TimerPickerSheet extends StatefulWidget {
 }
 
 class _TimerPickerSheetState extends State<_TimerPickerSheet> {
-  bool _showCustom = false;
-  int  _customHour = 0;
-  int  _customMin  = 30;
-  late bool _turnOn; // hẹn bật hay tắt
+  late bool _turnOn;
+  // 0 = Nhanh, 1 = Đếm ngược, 2 = Giờ cụ thể
+  int _tab = 0;
+
+  // Tab đếm ngược
+  int _cdHour = 0;
+  int _cdMin  = 30;
+
+  // Tab giờ cụ thể
+  late FixedExtentScrollController _hourCtrl;
+  late FixedExtentScrollController _minCtrl;
+  int _targetHour = 0;
+  int _targetMin  = 0;
 
   @override
   void initState() {
     super.initState();
-    // Mặc định: đèn đang bật → hẹn tắt, đèn đang tắt → hẹn bật
     _turnOn = !widget.currentlyOn;
+    final now = DateTime.now();
+    _targetHour = now.hour;
+    _targetMin  = now.minute;
+    _hourCtrl = FixedExtentScrollController(initialItem: _targetHour);
+    _minCtrl  = FixedExtentScrollController(initialItem: _targetMin);
   }
 
   @override
+  void dispose() {
+    _hourCtrl.dispose();
+    _minCtrl.dispose();
+    super.dispose();
+  }
+
+  // Tính duration từ giờ cụ thể đến hiện tại
+  Duration _durationUntil(int h, int m) {
+    final now = DateTime.now();
+    var target = DateTime(now.year, now.month, now.day, h, m);
+    if (!target.isAfter(now)) target = target.add(const Duration(days: 1));
+    return target.difference(now);
+  }
+
+  void _confirm(Duration d) => widget.onSelected(d, _turnOn);
+
+  @override
   Widget build(BuildContext context) {
+    final accentColor = _turnOn ? AppColors.accentLight : Colors.blueGrey.shade300;
+    final accentDim   = _turnOn ? AppColors.accentDim   : Colors.blueGrey.withOpacity(0.3);
+
     return Padding(
       padding: EdgeInsets.only(
-        left: 24, right: 24, top: 16,
-        bottom: MediaQuery.of(context).viewInsets.bottom + 32,
+        left: 0, right: 0, top: 0,
+        bottom: MediaQuery.of(context).viewInsets.bottom,
       ),
-      child: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Center(child: Container(width: 40, height: 4,
-                decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(2)))),
-            const SizedBox(height: 20),
-            Text(_turnOn ? 'Hẹn giờ bật đèn' : 'Hẹn giờ tắt đèn',
-                style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 4),
-            Text(_turnOn ? 'Đèn sẽ tự động bật sau thời gian chọn' : 'Đèn sẽ tự động tắt sau thời gian chọn',
-                style: const TextStyle(color: AppColors.textSecondary, fontSize: 13)),
-            const SizedBox(height: 20),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Handle bar
+          const SizedBox(height: 12),
+          Center(child: Container(width: 40, height: 4,
+              decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(2)))),
+          const SizedBox(height: 16),
 
-            // Bật / Tắt toggle
-            Container(
+          // Header
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 24),
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(color: accentDim, borderRadius: BorderRadius.circular(12)),
+                  child: Icon(Icons.timer_rounded, color: accentColor, size: 20),
+                ),
+                const SizedBox(width: 14),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(_turnOn ? 'Hẹn giờ bật đèn' : 'Hẹn giờ tắt đèn',
+                        style: const TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.bold)),
+                    Text(_turnOn ? 'Đèn tự bật đúng giờ bạn chọn' : 'Đèn tự tắt đúng giờ bạn chọn',
+                        style: const TextStyle(color: AppColors.textSecondary, fontSize: 12)),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+
+          // Bật / Tắt toggle
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 24),
+            child: Container(
+              padding: const EdgeInsets.all(4),
               decoration: BoxDecoration(
                 color: Colors.white.withOpacity(0.06),
                 borderRadius: BorderRadius.circular(14),
               ),
               child: Row(
                 children: [
-                  Expanded(
-                    child: GestureDetector(
-                      onTap: () => setState(() => _turnOn = false),
-                      child: AnimatedContainer(
-                        duration: const Duration(milliseconds: 200),
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                        decoration: BoxDecoration(
-                          color: !_turnOn ? Colors.blueGrey.withOpacity(0.4) : Colors.transparent,
-                          borderRadius: BorderRadius.circular(14),
-                          border: Border.all(
-                            color: !_turnOn ? Colors.blueGrey.withOpacity(0.6) : Colors.transparent,
-                          ),
-                        ),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(Icons.power_off_rounded,
-                                color: !_turnOn ? Colors.white : Colors.white38, size: 18),
-                            const SizedBox(width: 8),
-                            Text('Hẹn tắt',
-                                style: TextStyle(
-                                  color: !_turnOn ? Colors.white : Colors.white38,
-                                  fontWeight: FontWeight.bold, fontSize: 14)),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-                  Expanded(
-                    child: GestureDetector(
-                      onTap: () => setState(() => _turnOn = true),
-                      child: AnimatedContainer(
-                        duration: const Duration(milliseconds: 200),
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                        decoration: BoxDecoration(
-                          color: _turnOn ? AppColors.accentDim.withOpacity(0.6) : Colors.transparent,
-                          borderRadius: BorderRadius.circular(14),
-                          border: Border.all(
-                            color: _turnOn ? AppColors.accentLight.withOpacity(0.6) : Colors.transparent,
-                          ),
-                        ),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(Icons.power_rounded,
-                                color: _turnOn ? AppColors.accentLight : Colors.white38, size: 18),
-                            const SizedBox(width: 8),
-                            Text('Hẹn bật',
-                                style: TextStyle(
-                                  color: _turnOn ? AppColors.accentLight : Colors.white38,
-                                  fontWeight: FontWeight.bold, fontSize: 14)),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
+                  _modeBtn('Hẹn tắt', Icons.power_off_rounded, !_turnOn,
+                      Colors.blueGrey.shade300, () => setState(() => _turnOn = false)),
+                  _modeBtn('Hẹn bật', Icons.power_rounded, _turnOn,
+                      AppColors.accentLight, () => setState(() => _turnOn = true)),
                 ],
               ),
             ),
-            const SizedBox(height: 20),
+          ),
+          const SizedBox(height: 16),
 
-            // Preset options
-            ...widget.presets.map((o) => Padding(
-              padding: const EdgeInsets.only(bottom: 10),
-              child: Material(
-                color: Colors.transparent,
-                child: InkWell(
-                  borderRadius: BorderRadius.circular(14),
-                  onTap: () => widget.onSelected(o.duration, _turnOn),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
-                    decoration: BoxDecoration(
-                      color: AppColors.accentDim.withOpacity(0.2),
-                      borderRadius: BorderRadius.circular(14),
-                      border: Border.all(color: AppColors.accentLight.withOpacity(0.2)),
-                    ),
-                    child: Row(
-                      children: [
-                        Icon(o.icon, color: AppColors.accentLight, size: 20),
-                        const SizedBox(width: 14),
-                        Text(o.label,
-                            style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w600)),
-                        const Spacer(),
-                        const Icon(Icons.chevron_right_rounded, color: AppColors.textSecondary, size: 20),
-                      ],
-                    ),
-                  ),
-                ),
+          // Tab selector
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 24),
+            child: Container(
+              padding: const EdgeInsets.all(4),
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.05),
+                borderRadius: BorderRadius.circular(12),
               ),
-            )),
+              child: Row(
+                children: [
+                  _tabBtn('Nhanh',      Icons.bolt_rounded,         0, accentColor),
+                  _tabBtn('Đếm ngược', Icons.hourglass_top_rounded, 1, accentColor),
+                  _tabBtn('Giờ cụ thể', Icons.schedule_rounded,     2, accentColor),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 20),
 
-            // Custom time option
-            Material(
+          // Tab content
+          AnimatedSwitcher(
+            duration: const Duration(milliseconds: 200),
+            child: KeyedSubtree(
+              key: ValueKey(_tab),
+              child: _tab == 0 ? _buildQuickTab(accentColor, accentDim)
+                   : _tab == 1 ? _buildCountdownTab(accentColor, accentDim)
+                   :             _buildTargetTimeTab(accentColor, accentDim),
+            ),
+          ),
+          const SizedBox(height: 24),
+        ],
+      ),
+    );
+  }
+
+  // ── Quick presets tab ──
+  Widget _buildQuickTab(Color accent, Color dim) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 24),
+      child: Column(
+        children: [
+          GridView.count(
+            crossAxisCount: 3,
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            mainAxisSpacing: 10,
+            crossAxisSpacing: 10,
+            childAspectRatio: 1.6,
+            children: widget.presets.map((o) => Material(
               color: Colors.transparent,
               child: InkWell(
                 borderRadius: BorderRadius.circular(14),
-                onTap: () => setState(() => _showCustom = !_showCustom),
+                onTap: () => _confirm(o.duration),
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
                   decoration: BoxDecoration(
-                    color: _showCustom ? AppColors.accentDim.withOpacity(0.3) : Colors.white.withOpacity(0.05),
+                    color: dim.withOpacity(0.5),
                     borderRadius: BorderRadius.circular(14),
-                    border: Border.all(
-                      color: _showCustom ? AppColors.accentLight.withOpacity(0.4) : Colors.white12,
-                    ),
+                    border: Border.all(color: accent.withOpacity(0.25)),
                   ),
-                  child: Row(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Icon(Icons.tune_rounded,
-                          color: _showCustom ? AppColors.accentLight : Colors.white54, size: 20),
-                      const SizedBox(width: 14),
-                      Text('Tuỳ chỉnh thời gian',
-                          style: TextStyle(
-                            color: _showCustom ? Colors.white : Colors.white70,
-                            fontSize: 15, fontWeight: FontWeight.w600,
-                          )),
-                      const Spacer(),
-                      Icon(_showCustom ? Icons.expand_less_rounded : Icons.expand_more_rounded,
-                          color: AppColors.textSecondary, size: 20),
+                      Icon(o.icon, color: accent, size: 18),
+                      const SizedBox(height: 6),
+                      Text(o.label,
+                          style: TextStyle(color: accent, fontSize: 13, fontWeight: FontWeight.bold)),
                     ],
                   ),
                 ),
               ),
-            ),
+            )).toList(),
+          ),
+        ],
+      ),
+    );
+  }
 
-            if (_showCustom) ...[
-              const SizedBox(height: 16),
-              Container(
-                padding: const EdgeInsets.all(20),
-                decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.04),
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: Colors.white10),
-                ),
-                child: Column(
-                  children: [
-                    Row(
-                      children: [
-                        // Giờ
-                        Expanded(
-                          child: Column(
-                            children: [
-                              const Text('Giờ', style: TextStyle(color: AppColors.textSecondary, fontSize: 12)),
-                              const SizedBox(height: 8),
-                              Row(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  _numBtn(Icons.remove_rounded, () {
-                                    if (_customHour > 0) setState(() => _customHour--);
-                                  }),
-                                  const SizedBox(width: 16),
-                                  Text('$_customHour',
-                                      style: const TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.bold)),
-                                  const SizedBox(width: 16),
-                                  _numBtn(Icons.add_rounded, () {
-                                    if (_customHour < 23) setState(() => _customHour++);
-                                  }),
-                                ],
-                              ),
-                            ],
-                          ),
-                        ),
-                        const Text(':', style: TextStyle(color: Colors.white54, fontSize: 28, fontWeight: FontWeight.bold)),
-                        // Phút
-                        Expanded(
-                          child: Column(
-                            children: [
-                              const Text('Phút', style: TextStyle(color: AppColors.textSecondary, fontSize: 12)),
-                              const SizedBox(height: 8),
-                              Row(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  _numBtn(Icons.remove_rounded, () {
-                                    if (_customMin > 0) setState(() => _customMin--);
-                                  }),
-                                  const SizedBox(width: 16),
-                                  Text('${_customMin.toString().padLeft(2, '0')}',
-                                      style: const TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.bold)),
-                                  const SizedBox(width: 16),
-                                  _numBtn(Icons.add_rounded, () {
-                                    if (_customMin < 59) setState(() => _customMin++);
-                                  }),
-                                ],
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 20),
-                    SizedBox(
-                      width: double.infinity,
-                      child: ElevatedButton(
-                        onPressed: (_customHour == 0 && _customMin == 0) ? null : () {
-                          final duration = Duration(hours: _customHour, minutes: _customMin);
-                          widget.onSelected(duration, _turnOn);
-                        },
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: AppColors.accentDim,
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(vertical: 14),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                        ),
-                        child: Text(
-                          '${_turnOn ? 'Hẹn bật' : 'Hẹn tắt'} sau ${_customHour}h ${_customMin.toString().padLeft(2,'0')}m',
-                          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
+  // ── Countdown tab ──
+  Widget _buildCountdownTab(Color accent, Color dim) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 24),
+      child: Column(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(24),
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.04),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: Colors.white10),
+            ),
+            child: Row(
+              children: [
+                Expanded(child: _spinnerCol('Giờ', _cdHour, 23,
+                    (v) => setState(() => _cdHour = v), accent)),
+                Text(':', style: TextStyle(color: accent, fontSize: 36, fontWeight: FontWeight.bold)),
+                Expanded(child: _spinnerCol('Phút', _cdMin, 59,
+                    (v) => setState(() => _cdMin = v), accent)),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+          _confirmBtn(
+            label: '${_turnOn ? 'Bật' : 'Tắt'} sau ${_cdHour}h ${_cdMin.toString().padLeft(2,'0')}m',
+            enabled: _cdHour > 0 || _cdMin > 0,
+            accent: accent, dim: dim,
+            onTap: () => _confirm(Duration(hours: _cdHour, minutes: _cdMin)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ── Target time tab ──
+  Widget _buildTargetTimeTab(Color accent, Color dim) {
+    final dur = _durationUntil(_targetHour, _targetMin);
+    final durText = dur.inHours > 0
+        ? 'sau ${dur.inHours}h ${dur.inMinutes.remainder(60)}m'
+        : 'sau ${dur.inMinutes}m';
+    final isNextDay = dur.inHours >= 22;
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 24),
+      child: Column(
+        children: [
+          Container(
+            padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.04),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: Colors.white10),
+            ),
+            child: Row(
+              children: [
+                Expanded(child: _wheelCol('Giờ', _hourCtrl, 24,
+                    (v) => setState(() => _targetHour = v), accent)),
+                Text(':', style: TextStyle(color: accent, fontSize: 40, fontWeight: FontWeight.bold)),
+                Expanded(child: _wheelCol('Phút', _minCtrl, 60,
+                    (v) => setState(() => _targetMin = v), accent)),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+          // Info chip
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.info_outline_rounded, color: accent.withOpacity(0.6), size: 14),
+              const SizedBox(width: 6),
+              Text(
+                isNextDay
+                  ? 'Hẹn lúc ${_targetHour.toString().padLeft(2,'0')}:${_targetMin.toString().padLeft(2,'0')} ngày mai ($durText)'
+                  : 'Hẹn lúc ${_targetHour.toString().padLeft(2,'0')}:${_targetMin.toString().padLeft(2,'0')} hôm nay ($durText)',
+                style: TextStyle(color: accent.withOpacity(0.8), fontSize: 12),
               ),
             ],
+          ),
+          const SizedBox(height: 16),
+          _confirmBtn(
+            label: '${_turnOn ? 'Bật' : 'Tắt'} lúc ${_targetHour.toString().padLeft(2,'0')}:${_targetMin.toString().padLeft(2,'0')}',
+            enabled: true,
+            accent: accent, dim: dim,
+            onTap: () => _confirm(dur),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _spinnerCol(String label, int value, int max, ValueChanged<int> onChange, Color accent) {
+    return Column(
+      children: [
+        Text(label, style: const TextStyle(color: AppColors.textSecondary, fontSize: 11, letterSpacing: 1)),
+        const SizedBox(height: 12),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            _numBtn(Icons.remove_rounded, () { if (value > 0) onChange(value - 1); }),
+            const SizedBox(width: 14),
+            SizedBox(
+              width: 48,
+              child: Text(value.toString().padLeft(2,'0'),
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: accent, fontSize: 34, fontWeight: FontWeight.bold)),
+            ),
+            const SizedBox(width: 14),
+            _numBtn(Icons.add_rounded, () { if (value < max) onChange(value + 1); }),
           ],
         ),
+      ],
+    );
+  }
+
+  Widget _wheelCol(String label, FixedExtentScrollController ctrl, int count, ValueChanged<int> onChange, Color accent) {
+    return Column(
+      children: [
+        Text(label, style: const TextStyle(color: AppColors.textSecondary, fontSize: 11, letterSpacing: 1)),
+        const SizedBox(height: 4),
+        SizedBox(
+          height: 150,
+          child: ListWheelScrollView.useDelegate(
+            controller: ctrl,
+            itemExtent: 50,
+            physics: const FixedExtentScrollPhysics(),
+            perspective: 0.003,
+            overAndUnderCenterOpacity: 0.3,
+            onSelectedItemChanged: onChange,
+            childDelegate: ListWheelChildBuilderDelegate(
+              childCount: count,
+              builder: (ctx, i) => Center(
+                child: Text(i.toString().padLeft(2, '0'),
+                    style: TextStyle(
+                      color: accent,
+                      fontSize: 32,
+                      fontWeight: FontWeight.bold,
+                    )),
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _modeBtn(String label, IconData icon, bool active, Color color, VoidCallback onTap) {
+    return Expanded(
+      child: GestureDetector(
+        onTap: onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          padding: const EdgeInsets.symmetric(vertical: 10),
+          decoration: BoxDecoration(
+            color: active ? color.withOpacity(0.18) : Colors.transparent,
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: active ? color.withOpacity(0.5) : Colors.transparent),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(icon, color: active ? color : Colors.white38, size: 16),
+              const SizedBox(width: 6),
+              Text(label, style: TextStyle(
+                color: active ? color : Colors.white38,
+                fontWeight: FontWeight.bold, fontSize: 13,
+              )),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _tabBtn(String label, IconData icon, int idx, Color accent) {
+    final active = _tab == idx;
+    return Expanded(
+      child: GestureDetector(
+        onTap: () => setState(() => _tab = idx),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          decoration: BoxDecoration(
+            color: active ? accent.withOpacity(0.15) : Colors.transparent,
+            borderRadius: BorderRadius.circular(9),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, color: active ? accent : Colors.white38, size: 16),
+              const SizedBox(height: 4),
+              Text(label, style: TextStyle(
+                color: active ? accent : Colors.white38,
+                fontSize: 10, fontWeight: FontWeight.bold,
+              )),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _confirmBtn({
+    required String label,
+    required bool enabled,
+    required Color accent,
+    required Color dim,
+    required VoidCallback onTap,
+  }) {
+    return SizedBox(
+      width: double.infinity,
+      child: ElevatedButton(
+        onPressed: enabled ? onTap : null,
+        style: ElevatedButton.styleFrom(
+          backgroundColor: accent.withOpacity(0.2),
+          foregroundColor: accent,
+          disabledBackgroundColor: Colors.white10,
+          disabledForegroundColor: Colors.white30,
+          padding: const EdgeInsets.symmetric(vertical: 15),
+          elevation: 0,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(14),
+            side: BorderSide(color: enabled ? accent.withOpacity(0.4) : Colors.transparent),
+          ),
+        ),
+        child: Text(label, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
       ),
     );
   }
@@ -666,7 +820,7 @@ class _TimerPickerSheetState extends State<_TimerPickerSheet> {
   Widget _numBtn(IconData icon, VoidCallback onTap) => GestureDetector(
     onTap: onTap,
     child: Container(
-      width: 36, height: 36,
+      width: 38, height: 38,
       decoration: BoxDecoration(
         color: Colors.white.withOpacity(0.08),
         borderRadius: BorderRadius.circular(10),
