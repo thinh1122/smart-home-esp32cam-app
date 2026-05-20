@@ -349,6 +349,8 @@ class _HomeDashboardState extends State<HomeDashboard> {
             SliverToBoxAdapter(child: const SizedBox(height: 24)),
             SliverToBoxAdapter(child: const SizedBox(height: 20)),
             SliverToBoxAdapter(child: _buildCameraPreview()),
+            SliverToBoxAdapter(child: const SizedBox(height: 20)),
+            SliverToBoxAdapter(child: _buildRoomsRow()),
             SliverToBoxAdapter(child: const SizedBox(height: 28)),
             SliverToBoxAdapter(child: _buildSectionTitle('Điều khiển nhanh')),
             SliverToBoxAdapter(child: const SizedBox(height: 16)),
