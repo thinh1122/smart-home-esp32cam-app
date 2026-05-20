@@ -127,15 +127,78 @@ class _AddDeviceScreenState extends State<AddDeviceScreen> with SingleTickerProv
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20),
       child: GestureDetector(
+        onLongPress: () async {
+          // Test nhanh không cần BLE
+          final type = await Navigator.push<String>(context,
+            MaterialPageRoute(builder: (_) => const _DeviceTypeScreen()));
+          debugPrint('Test type: $type');
+          if (type == null || !mounted) return;
+          if (type == 'light') {
+            final room = await Navigator.push<_PickResult>(context,
+              MaterialPageRoute(builder: (_) => const _RoomPickerScreen()));
+            debugPrint('Test room: ${room?.key}');
+          }
+        },
         onTap: () async {
           try {
             final result = await Navigator.push(context,
               MaterialPageRoute(builder: (_) => const BLEWiFiProvisioningScreen()));
+            debugPrint('BLE result: $result');
             if (result == null || result['success'] != true) return;
             if (!mounted) return;
-            await Future.delayed(const Duration(milliseconds: 300));
-            if (!mounted) return;
-            await _showDeviceTypePicker(result);
+
+            // Push screen chọn loại thiết bị
+            final type = await Navigator.push<String>(context,
+              MaterialPageRoute(builder: (_) => const _DeviceTypeScreen()));
+            debugPrint('Device type selected: $type');
+            if (type == null || !mounted) return;
+
+            if (type == 'camera') {
+              await DatabaseHelper.instance.insertDevice({
+                'name': 'Camera an ninh',
+                'device_type': 'camera',
+                'room': 'entrance',
+                'mqtt_topic': 'home/devices/camera/entrance',
+                'ble_mac': result['mac'] ?? '',
+              });
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                  content: Text('Camera đã được thêm!'),
+                  backgroundColor: Colors.green,
+                  duration: Duration(seconds: 2),
+                ));
+                Navigator.pop(context);
+              }
+            } else {
+              // Push screen chọn phòng
+              final room = await Navigator.push<_PickResult>(context,
+                MaterialPageRoute(builder: (_) => const _RoomPickerScreen()));
+              debugPrint('Room selected: ${room?.key}');
+              if (room == null || !mounted) return;
+
+              // Push screen chọn loại đèn
+              final lightType = await Navigator.push<_PickResult>(context,
+                MaterialPageRoute(builder: (_) => _LightTypePickerScreen(roomLabel: room.label)));
+              if (lightType == null || !mounted) return;
+
+              await DatabaseHelper.instance.insertDevice({
+                'name': '${lightType.label} - ${room.label}',
+                'device_type': 'light',
+                'room': room.key,
+                'light_type': lightType.key,
+                'mqtt_topic': 'home/devices/light/${room.key}',
+                'ble_mac': result['mac'] ?? '',
+              });
+
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                  content: Text('Đã lưu: ${lightType.label} - ${room.label}'),
+                  backgroundColor: Colors.green,
+                  duration: const Duration(seconds: 2),
+                ));
+                Navigator.pop(context);
+              }
+            }
           } catch (e) {
             if (mounted) {
               ScaffoldMessenger.of(context).showSnackBar(
@@ -166,147 +229,6 @@ class _AddDeviceScreenState extends State<AddDeviceScreen> with SingleTickerProv
         ),
       ),
     );
-  }
-
-  Future<void> _showDeviceTypePicker(Map result) async {
-    final type = await showModalBottomSheet<String>(
-      context: context,
-      isDismissible: false,
-      enableDrag: false,
-      useSafeArea: true,
-      backgroundColor: AppColors.card,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      builder: (ctx) => Padding(
-        padding: const EdgeInsets.fromLTRB(24, 16, 24, 32),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(2))),
-            const SizedBox(height: 20),
-            const Icon(Icons.check_circle_rounded, color: Colors.greenAccent, size: 48),
-            const SizedBox(height: 12),
-            const Text('Kết nối thành công!', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 4),
-            const Text('Đây là thiết bị gì?', style: TextStyle(color: AppColors.textSecondary, fontSize: 13)),
-            const SizedBox(height: 24),
-            _typeOption(ctx, 'camera', 'Camera', 'ESP32-CAM, camera an ninh', Icons.videocam_rounded, AppColors.cameraColor),
-            const SizedBox(height: 12),
-            _typeOption(ctx, 'light', 'Đèn', 'ESP32-S3 + Relay, điều khiển đèn', Icons.lightbulb_rounded, AppColors.lightColor),
-            const SizedBox(height: 8),
-            TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text('Huỷ', style: TextStyle(color: AppColors.textSecondary)),
-            ),
-          ],
-        ),
-      ),
-    );
-
-    if (type == null || !mounted) return;
-
-    if (type == 'camera') {
-      await DatabaseHelper.instance.insertDevice({
-        'name': 'Camera an ninh',
-        'device_type': 'camera',
-        'room': 'entrance',
-        'mqtt_topic': 'home/devices/camera/entrance',
-        'ble_mac': result['mac'] ?? '',
-      });
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('✓ Camera đã được thêm!'),
-          backgroundColor: Colors.green,
-          duration: Duration(seconds: 2),
-        ));
-        // Quay về DevicesScreen (pop AddDeviceScreen)
-        if (Navigator.canPop(context)) Navigator.pop(context);
-      }
-    } else if (type == 'light') {
-      await _showLightRegistrationFlow(result);
-    }
-  }
-
-  Widget _typeOption(BuildContext ctx, String value, String title, String subtitle, IconData icon, Color color) {
-    return GestureDetector(
-      onTap: () => Navigator.pop(ctx, value),
-      child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.all(18),
-        decoration: BoxDecoration(
-          color: color.withOpacity(0.12),
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: color.withOpacity(0.35)),
-        ),
-        child: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(color: color.withOpacity(0.2), borderRadius: BorderRadius.circular(12)),
-              child: Icon(icon, color: color, size: 26),
-            ),
-            const SizedBox(width: 14),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(title, style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.bold)),
-                const SizedBox(height: 2),
-                Text(subtitle, style: const TextStyle(color: AppColors.textSecondary, fontSize: 12)),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Future<void> _showLightRegistrationFlow(Map result) async {
-    final room = await showModalBottomSheet<_PickResult>(
-      context: context,
-      backgroundColor: AppColors.card,
-      isScrollControlled: true,
-      isDismissible: false,
-      enableDrag: false,
-      useSafeArea: true,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
-      builder: (ctx) => const _RoomPickerSheet(),
-    );
-    if (room == null || !mounted) return;
-
-    await Future.delayed(const Duration(milliseconds: 500));
-    if (!mounted) return;
-
-    final lightType = await showModalBottomSheet<_PickResult>(
-      context: context,
-      backgroundColor: AppColors.card,
-      isScrollControlled: true,
-      isDismissible: false,
-      enableDrag: false,
-      useSafeArea: true,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
-      builder: (ctx) => _LightTypePickerSheet(roomLabel: room.label),
-    );
-    if (lightType == null || !mounted) return;
-
-    await DatabaseHelper.instance.insertDevice({
-      'name': '${lightType.label} - ${room.label}',
-      'device_type': 'light',
-      'room': room.key,
-      'light_type': lightType.key,
-      'mqtt_topic': 'home/devices/light/${room.key}',
-      'ble_mac': result['mac'] ?? '',
-    });
-
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text('✓ Đã lưu: ${lightType.label} - ${room.label}'),
-        backgroundColor: Colors.green,
-        duration: const Duration(seconds: 2),
-      ));
-      // Quay về DevicesScreen
-      if (Navigator.canPop(context)) Navigator.pop(context);
-    }
   }
 
   Widget _buildAiServerCard() {
@@ -440,9 +362,95 @@ class _PickResult {
   const _PickResult(this.key, this.label, this.emoji, this.color, {this.icon});
 }
 
-// ── Bottom sheet chọn phòng ───────────────────────────────────
-class _RoomPickerSheet extends StatelessWidget {
-  const _RoomPickerSheet();
+// ── Screen chọn loại thiết bị ────────────────────────────────
+class _DeviceTypeScreen extends StatelessWidget {
+  const _DeviceTypeScreen();
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: AppColors.bg,
+      appBar: AppBar(
+        backgroundColor: AppColors.bg,
+        elevation: 0,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_ios_rounded, color: Colors.white70),
+          onPressed: () => Navigator.pop(context),
+        ),
+        title: const Text('Loại thiết bị', style: TextStyle(color: Colors.white, fontSize: 17)),
+      ),
+      body: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Center(
+                child: Icon(Icons.check_circle_rounded, color: Colors.greenAccent, size: 64),
+              ),
+              const SizedBox(height: 16),
+              const Center(
+                child: Text('Kết nối thành công!',
+                    style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
+              ),
+              const SizedBox(height: 8),
+              const Center(
+                child: Text('Đây là thiết bị gì?',
+                    style: TextStyle(color: AppColors.textSecondary, fontSize: 14)),
+              ),
+              const SizedBox(height: 40),
+              _typeOption(context, 'camera', 'Camera', 'ESP32-CAM, camera an ninh',
+                  Icons.videocam_rounded, AppColors.cameraColor),
+              const SizedBox(height: 16),
+              _typeOption(context, 'light', 'Đèn', 'ESP32-S3 + Relay, điều khiển đèn',
+                  Icons.lightbulb_rounded, AppColors.lightColor),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _typeOption(BuildContext context, String value, String title, String subtitle,
+      IconData icon, Color color) {
+    return GestureDetector(
+      onTap: () => Navigator.pop(context, value),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: color.withOpacity(0.12),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: color.withOpacity(0.35)),
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(color: color.withOpacity(0.2), borderRadius: BorderRadius.circular(14)),
+              child: Icon(icon, color: color, size: 28),
+            ),
+            const SizedBox(width: 16),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(title, style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
+                const SizedBox(height: 4),
+                Text(subtitle, style: const TextStyle(color: AppColors.textSecondary, fontSize: 12)),
+              ],
+            ),
+            const Spacer(),
+            Icon(Icons.chevron_right_rounded, color: color.withOpacity(0.6), size: 24),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ── Screen chọn phòng ─────────────────────────────────────────
+class _RoomPickerScreen extends StatelessWidget {
+  const _RoomPickerScreen();
 
   static final _rooms = [
     _PickResult('living_room', 'Phòng khách',  '🛋️', const Color(0xFF6C63FF)),
@@ -455,56 +463,70 @@ class _RoomPickerSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(24, 16, 24, 32),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Center(child: Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(2)))),
-          const SizedBox(height: 20),
-          const Text('Chọn phòng', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
-          const SizedBox(height: 4),
-          const Text('Đèn sẽ được đặt ở phòng nào?', style: TextStyle(color: AppColors.textSecondary, fontSize: 13)),
-          const SizedBox(height: 20),
-          GridView.count(
-            crossAxisCount: 2,
-            shrinkWrap: true,
-            crossAxisSpacing: 12,
-            mainAxisSpacing: 12,
-            childAspectRatio: 1.4,
-            physics: const NeverScrollableScrollPhysics(),
-            children: _rooms.map((r) => GestureDetector(
-              onTap: () => Navigator.pop(context, r),
-              child: Container(
-                decoration: BoxDecoration(
-                  color: r.color.withOpacity(0.12),
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: r.color.withOpacity(0.3)),
-                ),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Text(r.emoji, style: const TextStyle(fontSize: 28)),
-                    const SizedBox(height: 6),
-                    Text(r.label, style: TextStyle(color: r.color, fontSize: 12, fontWeight: FontWeight.bold), textAlign: TextAlign.center),
-                  ],
+    return Scaffold(
+      backgroundColor: AppColors.bg,
+      appBar: AppBar(
+        backgroundColor: AppColors.bg,
+        elevation: 0,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_ios_rounded, color: Colors.white70),
+          onPressed: () => Navigator.pop(context),
+        ),
+        title: const Text('Chọn phòng', style: TextStyle(color: Colors.white, fontSize: 17)),
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(1),
+          child: Container(height: 1, color: Colors.white10),
+        ),
+      ),
+      body: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('Đèn sẽ được đặt ở phòng nào?',
+                  style: TextStyle(color: AppColors.textSecondary, fontSize: 14)),
+              const SizedBox(height: 24),
+              Expanded(
+                child: GridView.count(
+                  crossAxisCount: 2,
+                  crossAxisSpacing: 14,
+                  mainAxisSpacing: 14,
+                  childAspectRatio: 1.3,
+                  children: _rooms.map((r) => GestureDetector(
+                    onTap: () => Navigator.pop(context, r),
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: r.color.withOpacity(0.12),
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(color: r.color.withOpacity(0.3)),
+                      ),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Text(r.emoji, style: const TextStyle(fontSize: 32)),
+                          const SizedBox(height: 8),
+                          Text(r.label,
+                              style: TextStyle(color: r.color, fontSize: 13, fontWeight: FontWeight.bold),
+                              textAlign: TextAlign.center),
+                        ],
+                      ),
+                    ),
+                  )).toList(),
                 ),
               ),
-            )).toList(),
+            ],
           ),
-          const SizedBox(height: 8),
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Huỷ', style: TextStyle(color: AppColors.textSecondary))),
-        ],
+        ),
       ),
     );
   }
 }
 
-// ── Bottom sheet chọn loại đèn ────────────────────────────────
-class _LightTypePickerSheet extends StatelessWidget {
+// ── Screen chọn loại đèn ──────────────────────────────────────
+class _LightTypePickerScreen extends StatelessWidget {
   final String roomLabel;
-  const _LightTypePickerSheet({required this.roomLabel});
+  const _LightTypePickerScreen({required this.roomLabel});
 
   static final _types = [
     _PickResult('main',       'Đèn chính',     '💡', const Color(0xFFFFD93D), icon: Icons.lightbulb_rounded),
@@ -517,50 +539,67 @@ class _LightTypePickerSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(24, 16, 24, 32),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Center(child: Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(2)))),
-          const SizedBox(height: 20),
-          const Text('Loại đèn', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
-          const SizedBox(height: 4),
-          Text('$roomLabel — chọn loại đèn', style: const TextStyle(color: AppColors.textSecondary, fontSize: 13)),
-          const SizedBox(height: 16),
-          ...List.generate(_types.length, (i) {
-            final t = _types[i];
-            return Padding(
-              padding: const EdgeInsets.only(bottom: 8),
-              child: GestureDetector(
-                onTap: () => Navigator.pop(context, t),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                  decoration: BoxDecoration(
-                    color: t.color.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(14),
-                    border: Border.all(color: t.color.withOpacity(0.25)),
-                  ),
-                  child: Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(color: t.color.withOpacity(0.15), borderRadius: BorderRadius.circular(10)),
-                        child: Icon(t.icon ?? Icons.lightbulb_rounded, color: t.color, size: 20),
+    return Scaffold(
+      backgroundColor: AppColors.bg,
+      appBar: AppBar(
+        backgroundColor: AppColors.bg,
+        elevation: 0,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_ios_rounded, color: Colors.white70),
+          onPressed: () => Navigator.pop(context),
+        ),
+        title: const Text('Loại đèn', style: TextStyle(color: Colors.white, fontSize: 17)),
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(1),
+          child: Container(height: 1, color: Colors.white10),
+        ),
+      ),
+      body: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('$roomLabel — chọn loại đèn',
+                  style: const TextStyle(color: AppColors.textSecondary, fontSize: 14)),
+              const SizedBox(height: 20),
+              Expanded(
+                child: ListView.separated(
+                  itemCount: _types.length,
+                  separatorBuilder: (_, __) => const SizedBox(height: 10),
+                  itemBuilder: (ctx, i) {
+                    final t = _types[i];
+                    return GestureDetector(
+                      onTap: () => Navigator.pop(context, t),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
+                        decoration: BoxDecoration(
+                          color: t.color.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(color: t.color.withOpacity(0.25)),
+                        ),
+                        child: Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(10),
+                              decoration: BoxDecoration(color: t.color.withOpacity(0.15), borderRadius: BorderRadius.circular(12)),
+                              child: Icon(t.icon ?? Icons.lightbulb_rounded, color: t.color, size: 22),
+                            ),
+                            const SizedBox(width: 16),
+                            Text(t.label,
+                                style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w600)),
+                            const Spacer(),
+                            Icon(Icons.chevron_right_rounded, color: t.color.withOpacity(0.6), size: 22),
+                          ],
+                        ),
                       ),
-                      const SizedBox(width: 14),
-                      Text(t.label, style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w600)),
-                      const Spacer(),
-                      Icon(Icons.chevron_right_rounded, color: t.color.withOpacity(0.6), size: 20),
-                    ],
-                  ),
+                    );
+                  },
                 ),
               ),
-            );
-          }),
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Huỷ', style: TextStyle(color: AppColors.textSecondary))),
-        ],
+            ],
+          ),
+        ),
       ),
     );
   }
