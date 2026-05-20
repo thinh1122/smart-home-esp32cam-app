@@ -128,11 +128,18 @@ class _AddDeviceScreenState extends State<AddDeviceScreen> with SingleTickerProv
       padding: const EdgeInsets.symmetric(horizontal: 20),
       child: GestureDetector(
         onTap: () async {
-          final result = await Navigator.push(context,
-            MaterialPageRoute(builder: (_) => const BLEWiFiProvisioningScreen()));
-          if (result == null || result['success'] != true) return;
-          if (!mounted) return;
-          await _showDeviceTypePicker(result);
+          try {
+            final result = await Navigator.push(context,
+              MaterialPageRoute(builder: (_) => const BLEWiFiProvisioningScreen()));
+            if (result == null || result['success'] != true) return;
+            if (!mounted) return;
+            await _showDeviceTypePicker(result);
+          } catch (e) {
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text('Lỗi: $e'), backgroundColor: Colors.red));
+            }
+          }
         },
         child: Container(
           width: double.infinity,
@@ -162,7 +169,8 @@ class _AddDeviceScreenState extends State<AddDeviceScreen> with SingleTickerProv
   Future<void> _showDeviceTypePicker(Map result) async {
     final type = await showModalBottomSheet<String>(
       context: context,
-      isDismissible: false,
+      isDismissible: true,
+      enableDrag: true,
       backgroundColor: AppColors.card,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
@@ -200,12 +208,14 @@ class _AddDeviceScreenState extends State<AddDeviceScreen> with SingleTickerProv
       });
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('Camera đã được thêm thành công!'),
+          content: Text('✓ Camera đã được thêm!'),
           backgroundColor: Colors.green,
+          duration: Duration(seconds: 2),
         ));
-        Navigator.pop(context);
+        // Quay về DevicesScreen (pop AddDeviceScreen)
+        if (Navigator.canPop(context)) Navigator.pop(context);
       }
-    } else {
+    } else if (type == 'light') {
       await _showLightRegistrationFlow(result);
     }
   }
@@ -273,9 +283,12 @@ class _AddDeviceScreenState extends State<AddDeviceScreen> with SingleTickerProv
 
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text('Đã lưu: ${lightType.label} - ${room.label}'),
+        content: Text('✓ Đã lưu: ${lightType.label} - ${room.label}'),
         backgroundColor: Colors.green,
+        duration: const Duration(seconds: 2),
       ));
+      // Quay về DevicesScreen
+      if (Navigator.canPop(context)) Navigator.pop(context);
     }
   }
 
