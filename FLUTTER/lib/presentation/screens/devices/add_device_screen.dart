@@ -134,56 +134,10 @@ class _AddDeviceScreenState extends State<AddDeviceScreen> with SingleTickerProv
             if (result == null || result['success'] != true) return;
             if (!mounted) return;
 
-            // Push screen chọn loại thiết bị
-            final type = await Navigator.push<String>(context,
-              MaterialPageRoute(builder: (_) => const _DeviceTypeScreen()));
-            if (type == null || !mounted) return;
-
-            if (type == 'camera') {
-              await DatabaseHelper.instance.insertDevice({
-                'name': 'Camera an ninh',
-                'device_type': 'camera',
-                'room': 'entrance',
-                'mqtt_topic': 'home/devices/camera/entrance',
-                'ble_mac': result['mac'] ?? '',
-              });
-              if (mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-                  content: Text('Camera đã được thêm!'),
-                  backgroundColor: Colors.green,
-                  duration: Duration(seconds: 2),
-                ));
-                Navigator.pop(context);
-              }
-            } else {
-              // Push screen chọn phòng
-              final room = await Navigator.push<_PickResult>(context,
-                MaterialPageRoute(builder: (_) => const _RoomPickerScreen()));
-              if (room == null || !mounted) return;
-
-              // Push screen chọn loại đèn
-              final lightType = await Navigator.push<_PickResult>(context,
-                MaterialPageRoute(builder: (_) => _LightTypePickerScreen(roomLabel: room.label)));
-              if (lightType == null || !mounted) return;
-
-              await DatabaseHelper.instance.insertDevice({
-                'name': '${lightType.label} - ${room.label}',
-                'device_type': 'light',
-                'room': room.key,
-                'light_type': lightType.key,
-                'mqtt_topic': 'home/devices/light/${room.key}',
-                'ble_mac': result['mac'] ?? '',
-              });
-
-              if (mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                  content: Text('Đã lưu: ${lightType.label} - ${room.label}'),
-                  backgroundColor: Colors.green,
-                  duration: const Duration(seconds: 2),
-                ));
-                Navigator.pop(context);
-              }
-            }
+            // Push screen chọn loại thiết bị — toàn bộ flow xử lý bên trong
+            final saved = await Navigator.push<bool>(context,
+              MaterialPageRoute(builder: (_) => _DeviceTypeScreen(bleMac: result['mac'] ?? '')));
+            if (saved == true && mounted) Navigator.pop(context);
           } catch (e) {
             if (mounted) {
               ScaffoldMessenger.of(context).showSnackBar(
@@ -347,9 +301,107 @@ class _PickResult {
   const _PickResult(this.key, this.label, this.emoji, this.color, {this.icon});
 }
 
-// ── Screen chọn loại thiết bị ────────────────────────────────
-class _DeviceTypeScreen extends StatelessWidget {
-  const _DeviceTypeScreen();
+// ── Screen chọn loại thiết bị (xử lý toàn bộ flow) ──────────
+class _DeviceTypeScreen extends StatefulWidget {
+  final String bleMac;
+  const _DeviceTypeScreen({required this.bleMac});
+
+  @override
+  State<_DeviceTypeScreen> createState() => _DeviceTypeScreenState();
+}
+
+class _DeviceTypeScreenState extends State<_DeviceTypeScreen> {
+  bool _loading = false;
+
+  Future<void> _onTapCamera() async {
+    setState(() => _loading = true);
+    await DatabaseHelper.instance.insertDevice({
+      'name': 'Camera an ninh',
+      'device_type': 'camera',
+      'room': 'entrance',
+      'mqtt_topic': 'home/devices/camera/entrance',
+      'ble_mac': widget.bleMac,
+    });
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Camera đã được thêm!'),
+        backgroundColor: Colors.green,
+        duration: Duration(seconds: 2),
+      ));
+      Navigator.pop(context, true);
+    }
+  }
+
+  Future<void> _onTapLight() async {
+    // Push room picker
+    final room = await Navigator.push<_PickResult>(context,
+      MaterialPageRoute(builder: (_) => const _RoomPickerScreen()));
+    if (room == null || !mounted) return;
+
+    // Push light type picker
+    final lightType = await Navigator.push<_PickResult>(context,
+      MaterialPageRoute(builder: (_) => _LightTypePickerScreen(roomLabel: room.label)));
+    if (lightType == null || !mounted) return;
+
+    setState(() => _loading = true);
+    await DatabaseHelper.instance.insertDevice({
+      'name': '${lightType.label} - ${room.label}',
+      'device_type': 'light',
+      'room': room.key,
+      'light_type': lightType.key,
+      'mqtt_topic': 'home/devices/light/${room.key}',
+      'ble_mac': widget.bleMac,
+    });
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('Đã lưu: ${lightType.label} - ${room.label}'),
+        backgroundColor: Colors.green,
+        duration: const Duration(seconds: 2),
+      ));
+      Navigator.pop(context, true);
+    }
+  }
+
+  Widget _typeOption(String title, String subtitle, IconData icon, Color color, VoidCallback onTap) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: _loading ? null : onTap,
+        borderRadius: BorderRadius.circular(20),
+        child: Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            color: color.withOpacity(0.12),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: color.withOpacity(0.35)),
+          ),
+          child: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(color: color.withOpacity(0.2), borderRadius: BorderRadius.circular(14)),
+                child: Icon(icon, color: color, size: 28),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(title, style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 4),
+                    Text(subtitle, style: const TextStyle(color: AppColors.textSecondary, fontSize: 12)),
+                  ],
+                ),
+              ),
+              Icon(Icons.chevron_right_rounded, color: color.withOpacity(0.6), size: 24),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -370,68 +422,26 @@ class _DeviceTypeScreen extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Center(
-                child: Icon(Icons.check_circle_rounded, color: Colors.greenAccent, size: 64),
-              ),
+              const Center(child: Icon(Icons.check_circle_rounded, color: Colors.greenAccent, size: 64)),
               const SizedBox(height: 16),
-              const Center(
-                child: Text('Kết nối thành công!',
-                    style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
-              ),
+              const Center(child: Text('Kết nối thành công!',
+                  style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold))),
               const SizedBox(height: 8),
-              const Center(
-                child: Text('Đây là thiết bị gì?',
-                    style: TextStyle(color: AppColors.textSecondary, fontSize: 14)),
-              ),
+              const Center(child: Text('Đây là thiết bị gì?',
+                  style: TextStyle(color: AppColors.textSecondary, fontSize: 14))),
               const SizedBox(height: 40),
-              _typeOption(context, 'camera', 'Camera', 'ESP32-CAM, camera an ninh',
-                  Icons.videocam_rounded, AppColors.cameraColor),
+              _typeOption('Camera', 'ESP32-CAM, camera an ninh',
+                  Icons.videocam_rounded, AppColors.cameraColor, _onTapCamera),
               const SizedBox(height: 16),
-              _typeOption(context, 'light', 'Đèn', 'ESP32-S3 + Relay, điều khiển đèn',
-                  Icons.lightbulb_rounded, AppColors.lightColor),
+              _typeOption('Đèn', 'ESP32-S3 + Relay, điều khiển đèn',
+                  Icons.lightbulb_rounded, AppColors.lightColor, _onTapLight),
+              if (_loading) ...[
+                const SizedBox(height: 32),
+                const Center(child: CircularProgressIndicator()),
+              ],
             ],
           ),
         ),
-      ),
-    );
-  }
-
-  Widget _typeOption(BuildContext context, String value, String title, String subtitle,
-      IconData icon, Color color) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: () => Navigator.pop(context, value),
-        borderRadius: BorderRadius.circular(20),
-        child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.all(20),
-        decoration: BoxDecoration(
-          color: color.withOpacity(0.12),
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: color.withOpacity(0.35)),
-        ),
-        child: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(color: color.withOpacity(0.2), borderRadius: BorderRadius.circular(14)),
-              child: Icon(icon, color: color, size: 28),
-            ),
-            const SizedBox(width: 16),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(title, style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
-                const SizedBox(height: 4),
-                Text(subtitle, style: const TextStyle(color: AppColors.textSecondary, fontSize: 12)),
-              ],
-            ),
-            const Spacer(),
-            Icon(Icons.chevron_right_rounded, color: color.withOpacity(0.6), size: 24),
-          ],
-        ),
-      ),
       ),
     );
   }
