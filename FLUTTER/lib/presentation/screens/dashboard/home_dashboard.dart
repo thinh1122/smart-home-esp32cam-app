@@ -130,6 +130,8 @@ class _HomeDashboardState extends State<HomeDashboard> {
       final parts = topic.split('/');
       if (parts.length >= 4) {
         final room = parts[3];
+        final validRooms = _lights.map((d) => d['room'] as String).toSet();
+        if (!validRooms.contains(room)) return;
         final watt = (data['watt'] as num?)?.toDouble() ?? 0;
         setState(() => _lightWatts[room] = watt);
       }
@@ -193,7 +195,12 @@ class _HomeDashboardState extends State<HomeDashboard> {
   }
 
   int get _lightsOn => _lightStates.values.where((v) => v).length;
-  double get _totalWatt => _lightWatts.values.fold(0.0, (a, b) => a + b);
+  double get _totalWatt {
+    final validRooms = _lights.map((d) => d['room'] as String).toSet();
+    return _lightWatts.entries
+        .where((e) => validRooms.contains(e.key))
+        .fold(0.0, (a, b) => a + b.value);
+  }
 
   String get _greeting {
     final h = DateTime.now().hour;
@@ -213,8 +220,6 @@ class _HomeDashboardState extends State<HomeDashboard> {
             SliverToBoxAdapter(child: const SizedBox(height: 24)),
             SliverToBoxAdapter(child: _buildStatsBar()),
             SliverToBoxAdapter(child: const SizedBox(height: 28)),
-            SliverToBoxAdapter(child: _buildCameraPreview()),
-            SliverToBoxAdapter(child: const SizedBox(height: 28)),
             SliverToBoxAdapter(child: _buildSectionTitle('Phòng')),
             SliverToBoxAdapter(child: const SizedBox(height: 16)),
             SliverToBoxAdapter(child: _buildRoomsRow()),
@@ -222,6 +227,8 @@ class _HomeDashboardState extends State<HomeDashboard> {
             SliverToBoxAdapter(child: _buildSectionTitle('Điều khiển nhanh')),
             SliverToBoxAdapter(child: const SizedBox(height: 16)),
             SliverToBoxAdapter(child: _buildDeviceToggles()),
+            SliverToBoxAdapter(child: const SizedBox(height: 28)),
+            SliverToBoxAdapter(child: _buildCameraPreview()),
             SliverToBoxAdapter(child: const SizedBox(height: 24)),
           ],
         ),
@@ -255,6 +262,11 @@ class _HomeDashboardState extends State<HomeDashboard> {
                     style: TextStyle(color: AppColors.textPrimary, fontSize: 18, fontWeight: FontWeight.bold)),
               ],
             ),
+          ),
+          IconButton(
+            onPressed: _loadDevices,
+            icon: const Icon(Icons.refresh_rounded, color: Colors.white38, size: 22),
+            tooltip: 'Tải lại thiết bị',
           ),
           // MQTT status dot
           Container(
