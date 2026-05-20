@@ -306,7 +306,6 @@ class _DeviceCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return GestureDetector(
       onTap: onTap,
-      onLongPress: onDelete,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 250),
         padding: const EdgeInsets.all(18),
@@ -368,13 +367,29 @@ class _DeviceCard extends StatelessWidget {
                 ],
               ),
             ),
-            if (showSwitch) Switch(
-              value: isOn,
-              onChanged: onToggle,
-              activeColor: color,
-              activeTrackColor: color.withOpacity(0.25),
-              inactiveThumbColor: Colors.white30,
-              inactiveTrackColor: Colors.white10,
+            Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                if (showSwitch) Switch(
+                  value: isOn,
+                  onChanged: onToggle,
+                  activeColor: color,
+                  activeTrackColor: color.withOpacity(0.25),
+                  inactiveThumbColor: Colors.white30,
+                  inactiveTrackColor: Colors.white10,
+                ),
+                GestureDetector(
+                  onTap: onDelete,
+                  child: Container(
+                    padding: const EdgeInsets.all(6),
+                    decoration: BoxDecoration(
+                      color: Colors.red.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: const Icon(Icons.delete_outline_rounded, color: Colors.redAccent, size: 18),
+                  ),
+                ),
+              ],
             ),
           ],
         ),
