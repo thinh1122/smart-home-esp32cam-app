@@ -256,6 +256,10 @@ class _AddDeviceScreenState extends State<AddDeviceScreen> with SingleTickerProv
 
     if (type == null || !mounted) return;
 
+    // Chờ dialog type picker đóng hoàn toàn (animation xong) trước khi mở dialog tiếp
+    await Future.delayed(const Duration(milliseconds: 300));
+    if (!mounted) return;
+
     if (type == 'camera') {
       await DatabaseHelper.instance.insertDevice({
         'name': 'Camera an ninh',
@@ -269,7 +273,7 @@ class _AddDeviceScreenState extends State<AddDeviceScreen> with SingleTickerProv
           content: Text('Camera đã được thêm thành công!'),
           backgroundColor: Colors.green,
         ));
-        Navigator.pop(context); // Quay về trang chủ
+        Navigator.pop(context);
       }
     } else if (type == 'light') {
       await _showLightRegistrationFlow(result);
@@ -279,6 +283,10 @@ class _AddDeviceScreenState extends State<AddDeviceScreen> with SingleTickerProv
   Future<void> _showLightRegistrationFlow(Map result) async {
     final room = await _showRoomPicker();
     if (room == null || !mounted) return;
+
+    // Chờ room picker đóng xong
+    await Future.delayed(const Duration(milliseconds: 300));
+    if (!mounted) return;
 
     final lightType = await _showLightTypePicker(room['label']!);
     if (lightType == null || !mounted) return;
