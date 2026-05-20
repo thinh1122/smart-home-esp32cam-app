@@ -7,7 +7,8 @@ import '../../widgets/painters/brightness_ring_painter.dart';
 import '../../widgets/painters/color_wheel_painter.dart';
 
 class LivingRoomLightScreen extends StatefulWidget {
-  const LivingRoomLightScreen({super.key});
+  final String room;
+  const LivingRoomLightScreen({super.key, this.room = 'living_room'});
 
   @override
   State<LivingRoomLightScreen> createState() => _LivingRoomLightScreenState();
@@ -46,13 +47,13 @@ class _LivingRoomLightScreenState extends State<LivingRoomLightScreen> {
 
   void _toggleLight(bool v) {
     setState(() => _isOn = v);
-    MQTTService().controlLight('living_room', v);
+    MQTTService().controlLight(widget.room, v);
   }
 
   void _publishBrightness(double value) {
     _brightnessDebounce?.cancel();
     _brightnessDebounce = Timer(const Duration(milliseconds: 300), () {
-      MQTTService().publish('home/devices/light/living_room/brightness', {
+      MQTTService().publish('home/devices/light/${widget.room}/brightness', {
         'brightness': (value * 100).round(),
         'ts': DateTime.now().millisecondsSinceEpoch,
       });
@@ -62,7 +63,7 @@ class _LivingRoomLightScreenState extends State<LivingRoomLightScreen> {
   void _publishColor(Color color) {
     _colorDebounce?.cancel();
     _colorDebounce = Timer(const Duration(milliseconds: 300), () {
-      MQTTService().publish('home/devices/light/living_room/color', {
+      MQTTService().publish('home/devices/light/${widget.room}/color', {
         'r': color.red, 'g': color.green, 'b': color.blue,
         'hex': '#${color.value.toRadixString(16).substring(2).toUpperCase()}',
         'ts': DateTime.now().millisecondsSinceEpoch,
@@ -72,7 +73,7 @@ class _LivingRoomLightScreenState extends State<LivingRoomLightScreen> {
 
   void _applyScene(_Scene scene) {
     setState(() => _selectedScene = scene.name);
-    MQTTService().publish('home/devices/light/living_room/scene', {
+    MQTTService().publish('home/devices/light/${widget.room}/scene', {
       'scene': scene.name,
       'ts': DateTime.now().millisecondsSinceEpoch,
     });

@@ -166,7 +166,7 @@ class _DevicesScreenState extends State<DevicesScreen> {
         watt:     watt,
         onToggle: (v) => _toggle(room, v),
         onTap:    () => Navigator.push(context,
-          MaterialPageRoute(builder: (_) => const LivingRoomLightScreen())),
+          MaterialPageRoute(builder: (_) => LivingRoomLightScreen(room: room))),
         onDelete: () => _deleteDevice(d['id'] as int, room),
       ),
     );
@@ -240,13 +240,22 @@ class _DevicesScreenState extends State<DevicesScreen> {
               Text('Quản lý thiết bị nhà bạn', style: TextStyle(color: AppColors.textSecondary, fontSize: 13)),
             ],
           ),
-          IconButton(
-            onPressed: () async {
-              await Navigator.push(context,
-                MaterialPageRoute(builder: (_) => const AddDeviceScreen()));
-              _loadDevices();
-            },
-            icon: const Icon(Icons.add_circle_outline_rounded, color: Colors.white70, size: 26),
+          Row(
+            children: [
+              IconButton(
+                onPressed: _loadDevices,
+                icon: const Icon(Icons.refresh_rounded, color: Colors.white54, size: 24),
+                tooltip: 'Tải lại',
+              ),
+              IconButton(
+                onPressed: () async {
+                  await Navigator.push(context,
+                    MaterialPageRoute(builder: (_) => const AddDeviceScreen()));
+                  _loadDevices();
+                },
+                icon: const Icon(Icons.add_circle_outline_rounded, color: Colors.white70, size: 26),
+              ),
+            ],
           ),
         ],
       ),
