@@ -90,57 +90,16 @@ class _LivingRoomLightScreenState extends State<LivingRoomLightScreen> {
     showModalBottomSheet(
       context: context,
       backgroundColor: AppColors.card,
+      isScrollControlled: true,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
-      builder: (ctx) => Padding(
-        padding: const EdgeInsets.fromLTRB(24, 16, 24, 32),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Center(child: Container(width: 40, height: 4,
-                decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(2)))),
-            const SizedBox(height: 20),
-            const Text('Hẹn giờ tắt đèn',
-                style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 4),
-            const Text('Đèn sẽ tự động tắt sau thời gian chọn',
-                style: TextStyle(color: AppColors.textSecondary, fontSize: 13)),
-            const SizedBox(height: 20),
-            ...options.map((o) => Padding(
-              padding: const EdgeInsets.only(bottom: 10),
-              child: Material(
-                color: Colors.transparent,
-                child: InkWell(
-                  borderRadius: BorderRadius.circular(14),
-                  onTap: () {
-                    Navigator.pop(ctx);
-                    _startTimer(o.duration);
-                  },
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
-                    decoration: BoxDecoration(
-                      color: AppColors.accentDim.withOpacity(0.2),
-                      borderRadius: BorderRadius.circular(14),
-                      border: Border.all(color: AppColors.accentLight.withOpacity(0.2)),
-                    ),
-                    child: Row(
-                      children: [
-                        Icon(o.icon, color: AppColors.accentLight, size: 20),
-                        const SizedBox(width: 14),
-                        Text(o.label,
-                            style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w600)),
-                        const Spacer(),
-                        const Icon(Icons.chevron_right_rounded, color: AppColors.textSecondary, size: 20),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            )),
-          ],
-        ),
+      builder: (ctx) => _TimerPickerSheet(
+        onSelected: (duration) {
+          Navigator.pop(ctx);
+          _startTimer(duration);
+        },
+        presets: options,
       ),
     );
   }
@@ -429,4 +388,211 @@ class _TimerOption {
   final Duration duration;
   final IconData icon;
   const _TimerOption(this.label, this.duration, this.icon);
+}
+
+class _TimerPickerSheet extends StatefulWidget {
+  final void Function(Duration) onSelected;
+  final List<_TimerOption> presets;
+  const _TimerPickerSheet({required this.onSelected, required this.presets});
+
+  @override
+  State<_TimerPickerSheet> createState() => _TimerPickerSheetState();
+}
+
+class _TimerPickerSheetState extends State<_TimerPickerSheet> {
+  bool _showCustom = false;
+  int _customHour = 0;
+  int _customMin  = 30;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.only(
+        left: 24, right: 24, top: 16,
+        bottom: MediaQuery.of(context).viewInsets.bottom + 32,
+      ),
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(child: Container(width: 40, height: 4,
+                decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(2)))),
+            const SizedBox(height: 20),
+            const Text('Hẹn giờ tắt đèn',
+                style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 4),
+            const Text('Đèn sẽ tự động tắt sau thời gian chọn',
+                style: TextStyle(color: AppColors.textSecondary, fontSize: 13)),
+            const SizedBox(height: 20),
+
+            // Preset options
+            ...widget.presets.map((o) => Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(14),
+                  onTap: () => widget.onSelected(o.duration),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+                    decoration: BoxDecoration(
+                      color: AppColors.accentDim.withOpacity(0.2),
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: AppColors.accentLight.withOpacity(0.2)),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(o.icon, color: AppColors.accentLight, size: 20),
+                        const SizedBox(width: 14),
+                        Text(o.label,
+                            style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w600)),
+                        const Spacer(),
+                        const Icon(Icons.chevron_right_rounded, color: AppColors.textSecondary, size: 20),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            )),
+
+            // Custom time option
+            Material(
+              color: Colors.transparent,
+              child: InkWell(
+                borderRadius: BorderRadius.circular(14),
+                onTap: () => setState(() => _showCustom = !_showCustom),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+                  decoration: BoxDecoration(
+                    color: _showCustom ? AppColors.accentDim.withOpacity(0.3) : Colors.white.withOpacity(0.05),
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(
+                      color: _showCustom ? AppColors.accentLight.withOpacity(0.4) : Colors.white12,
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.tune_rounded,
+                          color: _showCustom ? AppColors.accentLight : Colors.white54, size: 20),
+                      const SizedBox(width: 14),
+                      Text('Tuỳ chỉnh thời gian',
+                          style: TextStyle(
+                            color: _showCustom ? Colors.white : Colors.white70,
+                            fontSize: 15, fontWeight: FontWeight.w600,
+                          )),
+                      const Spacer(),
+                      Icon(_showCustom ? Icons.expand_less_rounded : Icons.expand_more_rounded,
+                          color: AppColors.textSecondary, size: 20),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+
+            if (_showCustom) ...[
+              const SizedBox(height: 16),
+              Container(
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.04),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: Colors.white10),
+                ),
+                child: Column(
+                  children: [
+                    Row(
+                      children: [
+                        // Giờ
+                        Expanded(
+                          child: Column(
+                            children: [
+                              const Text('Giờ', style: TextStyle(color: AppColors.textSecondary, fontSize: 12)),
+                              const SizedBox(height: 8),
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  _numBtn(Icons.remove_rounded, () {
+                                    if (_customHour > 0) setState(() => _customHour--);
+                                  }),
+                                  const SizedBox(width: 16),
+                                  Text('$_customHour',
+                                      style: const TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.bold)),
+                                  const SizedBox(width: 16),
+                                  _numBtn(Icons.add_rounded, () {
+                                    if (_customHour < 23) setState(() => _customHour++);
+                                  }),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                        const Text(':', style: TextStyle(color: Colors.white54, fontSize: 28, fontWeight: FontWeight.bold)),
+                        // Phút
+                        Expanded(
+                          child: Column(
+                            children: [
+                              const Text('Phút', style: TextStyle(color: AppColors.textSecondary, fontSize: 12)),
+                              const SizedBox(height: 8),
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  _numBtn(Icons.remove_rounded, () {
+                                    if (_customMin > 0) setState(() => _customMin--);
+                                  }),
+                                  const SizedBox(width: 16),
+                                  Text('${_customMin.toString().padLeft(2, '0')}',
+                                      style: const TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.bold)),
+                                  const SizedBox(width: 16),
+                                  _numBtn(Icons.add_rounded, () {
+                                    if (_customMin < 59) setState(() => _customMin++);
+                                  }),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 20),
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton(
+                        onPressed: (_customHour == 0 && _customMin == 0) ? null : () {
+                          final duration = Duration(hours: _customHour, minutes: _customMin);
+                          widget.onSelected(duration);
+                        },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppColors.accentDim,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                        ),
+                        child: Text(
+                          'Đặt hẹn giờ ${_customHour}h ${_customMin.toString().padLeft(2,'0')}m',
+                          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _numBtn(IconData icon, VoidCallback onTap) => GestureDetector(
+    onTap: onTap,
+    child: Container(
+      width: 36, height: 36,
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.08),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Icon(icon, color: Colors.white70, size: 18),
+    ),
+  );
 }
