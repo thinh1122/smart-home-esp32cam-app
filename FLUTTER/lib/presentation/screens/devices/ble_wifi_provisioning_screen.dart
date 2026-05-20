@@ -144,7 +144,26 @@ class _BLEWiFiProvisioningScreenState extends State<BLEWiFiProvisioningScreen> {
                 setState(() { _esp32IP = ip; _step = 5; });
                 _onConnectedSuccessfully(ip);
               } else if (status == 'failed') {
-                _showError('WiFi connection failed.\nCheck SSID and password.');
+                if (mounted) {
+                  setState(() {
+                    _isConfiguring = false;
+                    _step = 4; // Quay về bước nhập mật khẩu
+                    _passCtrl.clear(); // Xoá mật khẩu cũ
+                  });
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Row(
+                        children: [
+                          Icon(Icons.wifi_off_rounded, color: Colors.white),
+                          SizedBox(width: 10),
+                          Expanded(child: Text('Mật khẩu WiFi không đúng!\nVui lòng thử lại.')),
+                        ],
+                      ),
+                      backgroundColor: Colors.redAccent,
+                      duration: Duration(seconds: 4),
+                    ),
+                  );
+                }
               }
             });
           }
@@ -222,11 +241,10 @@ class _BLEWiFiProvisioningScreenState extends State<BLEWiFiProvisioningScreen> {
       await _ssidChar!.write(_ssidCtrl.text.codeUnits);
       await Future.delayed(const Duration(milliseconds: 500));
       await _passChar!.write(_passCtrl.text.codeUnits);
-      _showSnack('Config sent! ESP32 connecting to WiFi...', AppColors.info);
-
-      // Fallback: neu ESP32 restart truoc khi notify kip -> timeout 12s van pop success
-      Future.delayed(const Duration(seconds: 12), () {
-        if (mounted && _step != 5) {
+      _showSnack('Đã gửi! ESP32 đang kết nối WiFi...', AppColors.info);
+      // Timeout 20s: nếu không nhận được notify và không fail -> coi như thành công
+      Future.delayed(const Duration(seconds: 20), () {
+        if (mounted && _isConfiguring && _step != 5) {
           _onConnectedSuccessfully('unknown');
         }
       });
