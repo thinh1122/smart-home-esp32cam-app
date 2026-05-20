@@ -137,7 +137,14 @@ class _AddDeviceScreenState extends State<AddDeviceScreen> with SingleTickerProv
             // Push screen chọn loại thiết bị — toàn bộ flow xử lý bên trong
             final saved = await Navigator.push<bool>(context,
               MaterialPageRoute(builder: (_) => _DeviceTypeScreen(bleMac: result['mac'] ?? '')));
-            if (saved == true && mounted) Navigator.pop(context);
+            if (saved == true && mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                content: Text('Thiết bị đã được lưu!'),
+                backgroundColor: Colors.green,
+                duration: Duration(seconds: 2),
+              ));
+              Navigator.pop(context);
+            }
           } catch (e) {
             if (mounted) {
               ScaffoldMessenger.of(context).showSnackBar(
@@ -311,10 +318,7 @@ class _DeviceTypeScreen extends StatefulWidget {
 }
 
 class _DeviceTypeScreenState extends State<_DeviceTypeScreen> {
-  bool _loading = false;
-
   Future<void> _onTapCamera() async {
-    setState(() => _loading = true);
     await DatabaseHelper.instance.insertDevice({
       'name': 'Camera an ninh',
       'device_type': 'camera',
@@ -322,28 +326,18 @@ class _DeviceTypeScreenState extends State<_DeviceTypeScreen> {
       'mqtt_topic': 'home/devices/camera/entrance',
       'ble_mac': widget.bleMac,
     });
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-        content: Text('Camera đã được thêm!'),
-        backgroundColor: Colors.green,
-        duration: Duration(seconds: 2),
-      ));
-      Navigator.pop(context, true);
-    }
+    if (mounted) Navigator.pop(context, true);
   }
 
   Future<void> _onTapLight() async {
-    // Push room picker
     final room = await Navigator.push<_PickResult>(context,
       MaterialPageRoute(builder: (_) => const _RoomPickerScreen()));
     if (room == null || !mounted) return;
 
-    // Push light type picker
     final lightType = await Navigator.push<_PickResult>(context,
       MaterialPageRoute(builder: (_) => _LightTypePickerScreen(roomLabel: room.label)));
     if (lightType == null || !mounted) return;
 
-    setState(() => _loading = true);
     await DatabaseHelper.instance.insertDevice({
       'name': '${lightType.label} - ${room.label}',
       'device_type': 'light',
@@ -353,21 +347,14 @@ class _DeviceTypeScreenState extends State<_DeviceTypeScreen> {
       'ble_mac': widget.bleMac,
     });
 
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text('Đã lưu: ${lightType.label} - ${room.label}'),
-        backgroundColor: Colors.green,
-        duration: const Duration(seconds: 2),
-      ));
-      Navigator.pop(context, true);
-    }
+    if (mounted) Navigator.pop(context, true);
   }
 
   Widget _typeOption(String title, String subtitle, IconData icon, Color color, VoidCallback onTap) {
     return Material(
       color: Colors.transparent,
       child: InkWell(
-        onTap: _loading ? null : onTap,
+        onTap: onTap,
         borderRadius: BorderRadius.circular(20),
         child: Container(
           width: double.infinity,
@@ -435,10 +422,6 @@ class _DeviceTypeScreenState extends State<_DeviceTypeScreen> {
               const SizedBox(height: 16),
               _typeOption('Đèn', 'ESP32-S3 + Relay, điều khiển đèn',
                   Icons.lightbulb_rounded, AppColors.lightColor, _onTapLight),
-              if (_loading) ...[
-                const SizedBox(height: 32),
-                const Center(child: CircularProgressIndicator()),
-              ],
             ],
           ),
         ),
