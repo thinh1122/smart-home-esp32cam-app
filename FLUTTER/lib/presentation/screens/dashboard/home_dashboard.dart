@@ -5,8 +5,10 @@ import '../../../core/theme/app_theme.dart';
 import '../../../core/config/app_config.dart';
 import '../../../core/services/mqtt_service.dart';
 import '../../../core/services/device_config_service.dart';
+import '../../../core/services/database_helper.dart';
 import '../../../core/services/notification_service.dart';
 import '../../widgets/live_mjpeg.dart';
+import '../lights/living_room_light_screen.dart';
 
 class HomeDashboard extends StatefulWidget {
   const HomeDashboard({super.key});
@@ -16,10 +18,13 @@ class HomeDashboard extends StatefulWidget {
 }
 
 class _HomeDashboardState extends State<HomeDashboard> {
-  // Device states — updated via MQTT
-  bool _livingRoomLight = false;
-  bool _bedroomLight = false;
-  bool _kitchenLight = false;
+  // Devices từ DB
+  List<Map<String, dynamic>> _lights = [];
+
+  // Device states — updated via MQTT (key = room)
+  final Map<String, bool>   _lightStates = {};
+  final Map<String, double> _lightWatts  = {};
+
   bool _doorLocked = true;
   bool _mqttConnected = false;
   Key _streamKey = UniqueKey();
@@ -33,9 +38,6 @@ class _HomeDashboardState extends State<HomeDashboard> {
   Map<String, dynamic>? _faceBbox;
   Timer? _bboxClearTimer;
 
-  // Power data từ ACS712 ESP32-S3
-  double _livingRoomWatt = 0;
-
   StreamSubscription? _deviceSub;
   StreamSubscription? _faceSub;
   StreamSubscription? _bboxSub;
@@ -44,8 +46,18 @@ class _HomeDashboardState extends State<HomeDashboard> {
   @override
   void initState() {
     super.initState();
+    _loadDevices();
     _connectMQTT();
     DeviceConfigService.instance.aiServerNotifier.addListener(_onEsp32Changed);
+  }
+
+  Future<void> _loadDevices() async {
+    final rows = await DatabaseHelper.instance.getAllDevices();
+    if (mounted) {
+      setState(() {
+        _lights = rows.where((d) => d['device_type'] == 'light').toList();
+      });
+    }
   }
 
   void _onEsp32Changed() {
@@ -76,12 +88,13 @@ class _HomeDashboardState extends State<HomeDashboard> {
       final data = event['data'] as Map<String, dynamic>;
       final state = (data['state'] as String? ?? '').toUpperCase();
       if (!mounted) return;
-      setState(() {
-        if (topic.contains('living_room')) _livingRoomLight = state == 'ON';
-        if (topic.contains('bedroom')) _bedroomLight = state == 'ON';
-        if (topic.contains('kitchen')) _kitchenLight = state == 'ON';
-        if (topic.contains('door')) _doorLocked = state == 'LOCKED';
-      });
+      final parts = topic.split('/');
+      if (topic.contains('door')) {
+        setState(() => _doorLocked = state == 'LOCKED');
+      } else if (parts.length >= 4) {
+        final room = parts[3];
+        setState(() => _lightStates[room] = state == 'ON');
+      }
     });
 
     // Lắng nghe MQTT nhận diện khuôn mặt
@@ -114,10 +127,12 @@ class _HomeDashboardState extends State<HomeDashboard> {
       if (!mounted) return;
       final topic = event['topic'] as String;
       final data  = event['data'] as Map<String, dynamic>;
-      final watt  = (data['watt'] as num?)?.toDouble() ?? 0;
-      setState(() {
-        if (topic.contains('living_room')) _livingRoomWatt = watt;
-      });
+      final parts = topic.split('/');
+      if (parts.length >= 4) {
+        final room = parts[3];
+        final watt = (data['watt'] as num?)?.toDouble() ?? 0;
+        setState(() => _lightWatts[room] = watt);
+      }
     });
 
     // Lắng nghe bbox khuôn mặt để vẽ overlay
@@ -153,11 +168,7 @@ class _HomeDashboardState extends State<HomeDashboard> {
 
   // Toggle đèn → publish MQTT
   void _toggleLight(String room, bool v) {
-    setState(() {
-      if (room == 'living_room') _livingRoomLight = v;
-      if (room == 'bedroom') _bedroomLight = v;
-      if (room == 'kitchen') _kitchenLight = v;
-    });
+    setState(() => _lightStates[room] = v);
     MQTTService().controlLight(room, v);
   }
 
@@ -181,7 +192,8 @@ class _HomeDashboardState extends State<HomeDashboard> {
       ));
   }
 
-  int get _lightsOn => [_livingRoomLight, _bedroomLight, _kitchenLight].where((v) => v).length;
+  int get _lightsOn => _lightStates.values.where((v) => v).length;
+  double get _totalWatt => _lightWatts.values.fold(0.0, (a, b) => a + b);
 
   String get _greeting {
     final h = DateTime.now().hour;
@@ -297,8 +309,8 @@ class _HomeDashboardState extends State<HomeDashboard> {
           const SizedBox(width: 10),
           _buildStatChip(
             Icons.bolt_rounded,
-            _livingRoomWatt > 0 ? AppColors.warning : AppColors.textSecondary,
-            '${_livingRoomWatt.toStringAsFixed(0)}W',
+            _totalWatt > 0 ? AppColors.warning : AppColors.textSecondary,
+            '${_totalWatt.toStringAsFixed(0)}W',
             'Công suất',
           ),
           const SizedBox(width: 10),
@@ -548,23 +560,70 @@ class _HomeDashboardState extends State<HomeDashboard> {
   );
 
   Widget _buildRoomsRow() {
-    final rooms = [
-      _RoomData('Phòng khách', Icons.weekend_rounded, AppColors.accentLight, _livingRoomLight ? 1 : 0),
-      _RoomData('Phòng ngủ', Icons.bed_rounded, AppColors.lightColor, _bedroomLight ? 1 : 0),
-      _RoomData('Nhà bếp', Icons.kitchen_rounded, AppColors.climateColor, _kitchenLight ? 1 : 0),
+    // Lấy danh sách phòng unique từ DB
+    final roomKeys = _lights.map((d) => d['room'] as String).toSet().toList();
+    final allItems = <_RoomData>[
+      ...roomKeys.map((room) {
+        final isOn = _lightStates[room] ?? false;
+        final label = _roomLabel(room);
+        final icon = _roomIcon(room);
+        return _RoomData(label, icon, AppColors.lightColor, isOn ? 1 : 0, room: room);
+      }),
       _RoomData('Cửa chính', Icons.door_front_door_rounded,
           _doorLocked ? AppColors.success : AppColors.warning, _doorLocked ? 1 : 0),
     ];
+
+    if (allItems.length == 1) {
+      // Chỉ có cửa chính, chưa có đèn
+      return Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 20),
+        child: Container(
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            color: AppColors.card,
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: Colors.white10),
+          ),
+          child: const Row(
+            children: [
+              Icon(Icons.lightbulb_outline_rounded, color: Colors.white24, size: 28),
+              SizedBox(width: 14),
+              Text('Chưa có đèn nào được kết nối\nVào Devices → + để thêm thiết bị',
+                  style: TextStyle(color: Colors.white38, fontSize: 12)),
+            ],
+          ),
+        ),
+      );
+    }
+
     return SizedBox(
       height: 120,
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.symmetric(horizontal: 20),
         separatorBuilder: (_, __) => const SizedBox(width: 12),
-        itemCount: rooms.length,
-        itemBuilder: (ctx, i) => _buildRoomCard(rooms[i]),
+        itemCount: allItems.length,
+        itemBuilder: (ctx, i) => _buildRoomCard(allItems[i]),
       ),
     );
+  }
+
+  String _roomLabel(String key) {
+    const map = {
+      'living_room': 'Phòng khách', 'bedroom': 'Phòng ngủ',
+      'kitchen': 'Nhà bếp', 'bathroom': 'Nhà vệ sinh',
+      'bedroom2': 'Phòng ngủ 2', 'garage': 'Nhà xe',
+    };
+    return map[key] ?? key;
+  }
+
+  IconData _roomIcon(String key) {
+    const map = {
+      'living_room': Icons.weekend_rounded, 'bedroom': Icons.bed_rounded,
+      'kitchen': Icons.kitchen_rounded, 'bathroom': Icons.shower_rounded,
+      'bedroom2': Icons.bed_rounded, 'garage': Icons.garage_rounded,
+    };
+    return map[key] ?? Icons.lightbulb_rounded;
   }
 
   Widget _buildRoomCard(_RoomData room) {
@@ -610,24 +669,41 @@ class _HomeDashboardState extends State<HomeDashboard> {
       padding: const EdgeInsets.symmetric(horizontal: 20),
       child: Column(
         children: [
-          _buildToggleCard(
-            'Đèn phòng khách', 'Trần · điều khiển qua MQTT',
-            Icons.lightbulb_rounded, AppColors.lightColor,
-            _livingRoomLight, (v) => _toggleLight('living_room', v),
-          ),
-          const SizedBox(height: 12),
-          _buildToggleCard(
-            'Đèn phòng ngủ', 'Đèn ngủ · điều khiển qua MQTT',
-            Icons.bed_rounded, AppColors.accentLight,
-            _bedroomLight, (v) => _toggleLight('bedroom', v),
-          ),
-          const SizedBox(height: 12),
-          _buildToggleCard(
-            'Đèn nhà bếp', 'Bếp · điều khiển qua MQTT',
-            Icons.kitchen_rounded, AppColors.climateColor,
-            _kitchenLight, (v) => _toggleLight('kitchen', v),
-          ),
-          const SizedBox(height: 12),
+          if (_lights.isEmpty)
+            Container(
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                color: AppColors.card,
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(color: Colors.white10),
+              ),
+              child: const Row(
+                children: [
+                  Icon(Icons.info_outline_rounded, color: Colors.white24, size: 22),
+                  SizedBox(width: 12),
+                  Expanded(child: Text('Chưa có thiết bị đèn nào.\nVào tab Devices → + để thêm.',
+                      style: TextStyle(color: Colors.white38, fontSize: 12))),
+                ],
+              ),
+            ),
+          ..._lights.asMap().entries.map((e) {
+            final d = e.value;
+            final room = d['room'] as String;
+            final isOn = _lightStates[room] ?? false;
+            final watt = _lightWatts[room] ?? 0.0;
+            final subtitle = watt > 0 ? '${watt.round()}W · MQTT' : 'MQTT';
+            return Padding(
+              padding: EdgeInsets.only(bottom: e.key < _lights.length - 1 || true ? 12 : 0),
+              child: _buildToggleCard(
+                d['name'] as String, subtitle,
+                Icons.lightbulb_rounded, AppColors.lightColor,
+                isOn, (v) => _toggleLight(room, v),
+                onTap: () => Navigator.push(context,
+                  MaterialPageRoute(builder: (_) => LivingRoomLightScreen(room: room))),
+              ),
+            );
+          }),
+          const SizedBox(height: 0),
           _buildToggleCard(
             'Khoá cửa chính', _doorLocked ? 'Đang khoá · an toàn' : 'Đang mở · chú ý!',
             _doorLocked ? Icons.lock_rounded : Icons.lock_open_rounded,
@@ -641,9 +717,11 @@ class _HomeDashboardState extends State<HomeDashboard> {
 
   Widget _buildToggleCard(
     String title, String subtitle, IconData icon, Color color,
-    bool isActive, ValueChanged<bool> onChanged,
+    bool isActive, ValueChanged<bool> onChanged, {VoidCallback? onTap}
   ) {
-    return Container(
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
       padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
       decoration: BoxDecoration(
         color: isActive ? AppColors.cardElevated : AppColors.card,
@@ -681,6 +759,7 @@ class _HomeDashboardState extends State<HomeDashboard> {
           ),
         ],
       ),
+    ),
     );
   }
 }
@@ -690,7 +769,8 @@ class _RoomData {
   final IconData icon;
   final Color color;
   final int activeDevices;
-  const _RoomData(this.name, this.icon, this.color, this.activeDevices);
+  final String? room;
+  const _RoomData(this.name, this.icon, this.color, this.activeDevices, {this.room});
 }
 
 // Vẽ bounding box xanh lên camera overlay
