@@ -126,12 +126,19 @@ class MQTTService {
       try {
         final data = jsonDecode(payload) as Map<String, dynamic>;
         if (topic == 'home/server/ip') {
-          // Python publish IP khi khởi động → tự động cấu hình AI server
-          final ip = data['ip'] as String?;
-          final port = (data['port'] as num?)?.toInt() ?? 5000;
+          final ip   = data['ip']   as String?;
+          final port = (data['port'] as num?)?.toInt();
+          final type = data['type'] as String? ?? '';
           if (ip != null && ip.isNotEmpty) {
-            DeviceConfigService.instance.saveAiServer(ip, port: port);
-            debugPrint('🤖 AI Server tự động cấu hình: $ip:$port');
+            if (type == 'esp32cam') {
+              // ESP32CAM broadcast IP → lưu để stream
+              DeviceConfigService.instance.saveEsp32Ip(ip, port: port ?? 81);
+              debugPrint('📷 ESP32CAM tự động phát hiện: $ip:${port ?? 81}');
+            } else {
+              // Python AI server broadcast IP
+              DeviceConfigService.instance.saveAiServer(ip, port: port ?? 5000);
+              debugPrint('🤖 AI Server tự động cấu hình: $ip:${port ?? 5000}');
+            }
           }
         } else if (topic == AppConfig.topicFaceBbox) {
           _faceBboxController.add(data);

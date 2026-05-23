@@ -5,6 +5,7 @@
 #include <BLEServer.h>
 #include <BLEUtils.h>
 #include <BLE2902.h>
+#include <PubSubClient.h>
 
 // ============================================================
 // CAMERA PINS - AI THINKER ESP32-CAM
@@ -56,6 +57,13 @@ String receivedSSID = "";
 String receivedPassword = "";
 
 WiFiServer server(81);
+
+// MQTT
+#define MQTT_BROKER    "broker.emqx.io"
+#define MQTT_PORT      1883
+#define MQTT_CLIENT_ID "esp32cam_01"
+WiFiClient   mqttWifi;
+PubSubClient mqttClient(mqttWifi);
 
 // State management
 enum SystemState {
@@ -394,6 +402,24 @@ void deinitBLE() {
 }
 
 // ============================================================
+// MQTT — publish IP để Flutter tự detect
+// ============================================================
+void mqttPublishIp() {
+  mqttClient.setServer(MQTT_BROKER, MQTT_PORT);
+  if (mqttClient.connect(MQTT_CLIENT_ID)) {
+    String ip   = WiFi.localIP().toString();
+    String port = "81";
+    String msg  = "{\"ip\":\"" + ip + "\",\"port\":" + port + ",\"type\":\"esp32cam\"}";
+    // Publish retain=true → app nhận ngay kể cả connect sau
+    mqttClient.publish("home/server/ip", msg.c_str(), true);
+    Serial.println("MQTT IP published: " + msg);
+    mqttClient.disconnect();
+  } else {
+    Serial.println("MQTT publish IP failed (broker unreachable)");
+  }
+}
+
+// ============================================================
 // HTTP SERVER
 // ============================================================
 void handleHTTPRequest() {
@@ -536,6 +562,7 @@ void setup() {
       // Success - start web server
       server.begin();
       Serial.println("✅ Web server khởi động port 81");
+      mqttPublishIp();  // Tự broadcast IP lên MQTT → Flutter tự detect
       Serial.println("🎯 Hệ thống sẵn sàng hoạt động!");
     } else {
       // Failed - clear bad config and start BLE
@@ -608,6 +635,7 @@ void loop() {
           saveWiFiConfig(receivedSSID, receivedPassword);
           server.begin();
           Serial.println("✅ Web server khởi động port 81");
+          mqttPublishIp();
           Serial.println("🎯 Provisioning hoàn tất!");
         } else {
           Serial.println("❌ Kết nối thất bại → Restart để thử lại");
