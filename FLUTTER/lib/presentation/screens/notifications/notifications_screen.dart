@@ -58,10 +58,17 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   }
 
   Widget _buildHeader(List<AppNotification> items) {
+    final canPop = Navigator.canPop(context);
     return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 20, 12, 12),
+      padding: EdgeInsets.fromLTRB(canPop ? 4 : 20, 20, 12, 12),
       child: Row(
         children: [
+          if (canPop)
+            IconButton(
+              onPressed: () => Navigator.pop(context),
+              icon: const Icon(Icons.arrow_back_ios_rounded,
+                  color: Colors.white70, size: 20),
+            ),
           const Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,

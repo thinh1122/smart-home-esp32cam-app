@@ -3,6 +3,7 @@ import 'core/theme/app_theme.dart';
 import 'core/services/mqtt_service.dart';
 import 'core/services/device_config_service.dart';
 import 'core/services/notification_service.dart';
+import 'core/services/app_notification_service.dart';
 import 'core/services/server_discovery_service.dart';
 import 'presentation/screens/main_screen.dart';
 
@@ -15,11 +16,18 @@ void main() async {
   // Khởi tạo notification channels
   await NotificationService.instance.init();
 
-  // Connect MQTT in background
-  MQTTService().connect().then((ok) => debugPrint(ok ? 'MQTT connected' : 'MQTT offline'));
+  // Connect MQTT rồi bắt đầu lắng nghe face recognition ngay
+  MQTTService().connect().then((ok) {
+    debugPrint(ok ? 'MQTT connected' : 'MQTT offline');
+    // Luôn start listening — tự reconnect khi có stream
+    AppNotificationService.instance.startListening();
+  });
+
+  // Cũng start listening ngay cả khi MQTT chưa connect
+  // (stream sẽ có data khi connect thành công sau)
+  AppNotificationService.instance.startListening();
 
   // Tự động tìm Python AI server trên LAN qua mDNS (background)
-  // Nếu tìm thấy sẽ tự lưu IP — không cần nhập thủ công
   ServerDiscoveryService.instance.startDiscovery();
 
   runApp(const SmartHomeApp());

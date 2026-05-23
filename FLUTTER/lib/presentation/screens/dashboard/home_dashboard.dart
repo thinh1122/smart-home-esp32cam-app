@@ -117,19 +117,12 @@ class _HomeDashboardState extends State<HomeDashboard> {
         if (mounted) setState(() => _lastFaceEvent = null);
       });
 
+      // Banner UI — notification đã được handle bởi AppNotificationService ở main()
       if (topic == AppConfig.topicFaceResult && (data['matched'] as bool? ?? false)) {
         final name = data['name'] as String? ?? '';
-        final role = data['role'] as String? ?? '';
-        final conf = data['confidence'] != null
-            ? '${((data['confidence'] as num) * 100).toStringAsFixed(0)}%'
-            : '';
         _showBanner('Xin chào $name! Chào mừng về nhà', AppColors.success);
-        _addNotification('Nhận diện thành công', '$name ($role) — $conf');
-        NotificationService.instance.showMemberRecognized(name: name, role: role, confidence: conf);
       } else if (topic == AppConfig.topicFaceAlert) {
         _showBanner('CẢNH BÁO: Phát hiện người lạ!', AppColors.error);
-        _addNotification('Phát hiện người lạ!', 'Camera cửa trước phát hiện người không xác định', isAlert: true);
-        NotificationService.instance.showStrangerAlert();
       }
     });
 
