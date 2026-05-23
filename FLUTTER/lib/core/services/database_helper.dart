@@ -1,9 +1,13 @@
+import 'package:flutter/foundation.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
 
 class DatabaseHelper {
   static final DatabaseHelper instance = DatabaseHelper._init();
   static Database? _database;
+
+  /// Fires whenever a device is inserted or deleted — listeners should reload
+  static final deviceListNotifier = ValueNotifier<int>(0);
 
   DatabaseHelper._init();
 
@@ -110,10 +114,12 @@ class DatabaseHelper {
   // ── Devices ──────────────────────────────────────────────
   Future<int> insertDevice(Map<String, dynamic> device) async {
     final db = await instance.database;
-    return await db.insert('devices', {
+    final id = await db.insert('devices', {
       ...device,
       'created_at': DateTime.now().toIso8601String(),
     }, conflictAlgorithm: ConflictAlgorithm.replace);
+    deviceListNotifier.value++;
+    return id;
   }
 
   Future<List<Map<String, dynamic>>> getAllDevices() async {
@@ -129,5 +135,6 @@ class DatabaseHelper {
   Future<void> deleteDevice(int id) async {
     final db = await instance.database;
     await db.delete('devices', where: 'id = ?', whereArgs: [id]);
+    deviceListNotifier.value++;
   }
 }

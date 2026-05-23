@@ -264,7 +264,7 @@ class _DevicesScreenState extends State<DevicesScreen> {
 
   Widget _buildSummary(List<Map<String, dynamic>> lights) {
     final onCount   = lights.where((d) => _states[d['room']] == true).length;
-    final total     = lights.length;
+    final total     = _devices.length;
     final totalWatt = _watts.values.fold(0.0, (a, b) => a + b);
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20),

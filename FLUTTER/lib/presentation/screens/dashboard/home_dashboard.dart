@@ -58,6 +58,7 @@ class _HomeDashboardState extends State<HomeDashboard> {
     _loadDevices();
     _connectMQTT();
     DeviceConfigService.instance.aiServerNotifier.addListener(_onEsp32Changed);
+    DatabaseHelper.deviceListNotifier.addListener(_loadDevices);
   }
 
   Future<void> _loadDevices() async {
@@ -76,6 +77,7 @@ class _HomeDashboardState extends State<HomeDashboard> {
   @override
   void dispose() {
     DeviceConfigService.instance.aiServerNotifier.removeListener(_onEsp32Changed);
+    DatabaseHelper.deviceListNotifier.removeListener(_loadDevices);
     _deviceSub?.cancel();
     _faceSub?.cancel();
     _bboxSub?.cancel();
@@ -166,7 +168,7 @@ class _HomeDashboardState extends State<HomeDashboard> {
     if (!mounted) return;
     _retryTimer?.cancel();
     _retryTimer = Timer(const Duration(seconds: 3), () {
-      if (mounted && AppConfig.streamUrl.isNotEmpty) {
+      if (mounted && DeviceConfigService.instance.hasEsp32Ip) {
         setState(() => _streamKey = UniqueKey());
       }
     });
@@ -492,7 +494,7 @@ class _HomeDashboardState extends State<HomeDashboard> {
               child: Stack(
                 fit: StackFit.expand,
                 children: [
-                  if (AppConfig.streamUrl.isNotEmpty)
+                  if (DeviceConfigService.instance.hasEsp32Ip)
                     LiveMjpeg(
                       key: _streamKey,
                       stream: AppConfig.streamUrl,
