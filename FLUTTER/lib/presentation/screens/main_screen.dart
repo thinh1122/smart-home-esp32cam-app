@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import '../../core/theme/app_theme.dart';
 import 'dashboard/home_dashboard.dart';
-import 'lights/living_room_light_screen.dart';
 import 'members/members_screen.dart';
+import 'profile/profile_screen.dart';
 import 'devices/devices_screen.dart';
 
 class MainScreen extends StatefulWidget {
@@ -16,16 +16,16 @@ class _MainScreenState extends State<MainScreen> {
   int _currentIndex = 0;
 
   static const _tabs = [
-    _TabItem(icon: Icons.home_rounded, label: 'Home'),
+    _TabItem(icon: Icons.home_rounded,      label: 'Home'),
     _TabItem(icon: Icons.people_alt_rounded, label: 'Members'),
-    _TabItem(icon: Icons.lightbulb_rounded, label: 'Lights'),
-    _TabItem(icon: Icons.devices_rounded, label: 'Devices'),
+    _TabItem(icon: Icons.person_rounded,     label: 'Profile'),
+    _TabItem(icon: Icons.devices_rounded,    label: 'Devices'),
   ];
 
   final _pages = const [
     HomeDashboard(),
     MembersScreen(),
-    LivingRoomLightScreen(),
+    ProfileScreen(),
     DevicesScreen(),
   ];
 
