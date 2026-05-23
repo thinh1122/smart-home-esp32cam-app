@@ -24,8 +24,26 @@ class _LivingRoomLightScreenState extends State<LivingRoomLightScreen> {
   bool      _timerActive = false;
   bool      _timerTurnOn = false; // false = hẹn tắt, true = hẹn bật
 
+  StreamSubscription? _stateSub;
+
+  @override
+  void initState() {
+    super.initState();
+    // Lắng nghe state từ ESP32 về để đồng bộ UI
+    _stateSub = MQTTService().deviceStateStream.listen((msg) {
+      final topic = msg['topic'] as String;
+      final data  = msg['data'] as Map<String, dynamic>;
+      if (topic == 'home/devices/light/${widget.room}/state') {
+        final on = (data['state'] as String?)?.toUpperCase() == 'ON';
+        if (mounted) setState(() => _isOn = on);
+      }
+    });
+    debugPrint('[LightScreen] room=${widget.room} topic=home/devices/light/${widget.room}/command');
+  }
+
   @override
   void dispose() {
+    _stateSub?.cancel();
     _brightnessDebounce?.cancel();
     _countdownTimer?.cancel();
     super.dispose();
@@ -152,8 +170,8 @@ class _LivingRoomLightScreenState extends State<LivingRoomLightScreen> {
                 children: [
                   Text(_roomLabel(widget.room),
                       style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold)),
-                  const Text('Điều khiển đèn',
-                      style: TextStyle(color: AppColors.textSecondary, fontSize: 13)),
+                  Text('Điều khiển đèn · ${widget.room}',
+                      style: const TextStyle(color: AppColors.textSecondary, fontSize: 12)),
                 ],
               ),
             ],

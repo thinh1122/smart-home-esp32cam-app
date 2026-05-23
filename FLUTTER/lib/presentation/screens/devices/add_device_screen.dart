@@ -52,18 +52,25 @@ class _AddDeviceScreenState extends State<AddDeviceScreen> with SingleTickerProv
   }
 
   Widget _buildHeader() {
+    final canPop = Navigator.canPop(context);
     return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
+      padding: EdgeInsets.fromLTRB(canPop ? 4 : 20, 20, 20, 0),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          const Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('Add Device', style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold)),
-              SizedBox(height: 2),
-              Text('Connect your smart devices', style: TextStyle(color: AppColors.textSecondary, fontSize: 13)),
-            ],
+          if (canPop)
+            IconButton(
+              onPressed: () => Navigator.pop(context),
+              icon: const Icon(Icons.arrow_back_ios_rounded, color: Colors.white70, size: 20),
+            ),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: const [
+                Text('Thêm thiết bị', style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold)),
+                SizedBox(height: 2),
+                Text('Kết nối thiết bị thông minh', style: TextStyle(color: AppColors.textSecondary, fontSize: 13)),
+              ],
+            ),
           ),
           Container(
             padding: const EdgeInsets.all(10),
