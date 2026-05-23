@@ -389,29 +389,16 @@ class _DeviceCard extends StatelessWidget {
                 ],
               ),
             ),
-            Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                if (showSwitch) Switch(
-                  value: isOn,
-                  onChanged: onToggle,
-                  activeColor: color,
-                  activeTrackColor: color.withOpacity(0.25),
-                  inactiveThumbColor: Colors.white30,
-                  inactiveTrackColor: Colors.white10,
+            GestureDetector(
+              onTap: onDelete,
+              child: Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.red.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(10),
                 ),
-                GestureDetector(
-                  onTap: onDelete,
-                  child: Container(
-                    padding: const EdgeInsets.all(6),
-                    decoration: BoxDecoration(
-                      color: Colors.red.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: const Icon(Icons.delete_outline_rounded, color: Colors.redAccent, size: 18),
-                  ),
-                ),
-              ],
+                child: const Icon(Icons.delete_outline_rounded, color: Colors.redAccent, size: 20),
+              ),
             ),
           ],
         ),

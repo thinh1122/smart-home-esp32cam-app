@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/services/database_helper.dart';
 import '../../../core/services/mqtt_service.dart';
+import '../lights/living_room_light_screen.dart';
+import '../members/members_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -11,10 +13,11 @@ class ProfileScreen extends StatefulWidget {
 }
 
 class _ProfileScreenState extends State<ProfileScreen> {
-  int _lightCount  = 0;
-  int _cameraCount = 0;
-  int _memberCount = 0;
-  bool _mqttOk     = false;
+  int  _lightCount  = 0;
+  int  _cameraCount = 0;
+  int  _memberCount = 0;
+  bool _mqttOk      = false;
+  List<Map<String, dynamic>> _lightDevices = [];
 
   @override
   void initState() {
@@ -25,14 +28,70 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Future<void> _loadStats() async {
     final devices = await DatabaseHelper.instance.getAllDevices();
     final members = await DatabaseHelper.instance.getAllMembers();
-    final mqtt    = MQTTService().isConnected;
     if (!mounted) return;
     setState(() {
-      _lightCount  = devices.where((d) => d['device_type'] == 'light').length;
-      _cameraCount = devices.where((d) => d['device_type'] == 'camera').length;
-      _memberCount = members.length;
-      _mqttOk      = mqtt;
+      _lightDevices = devices.where((d) => d['device_type'] == 'light').toList();
+      _lightCount   = _lightDevices.length;
+      _cameraCount  = devices.where((d) => d['device_type'] == 'camera').length;
+      _memberCount  = members.length;
+      _mqttOk       = MQTTService().isConnected;
     });
+  }
+
+  // Bấm vào chip đèn → chọn phòng rồi navigate
+  void _onTapLight() {
+    if (_lightDevices.isEmpty) return;
+    if (_lightDevices.length == 1) {
+      final room = _lightDevices.first['room'] as String;
+      Navigator.push(context,
+          MaterialPageRoute(builder: (_) => LivingRoomLightScreen(room: room)));
+      return;
+    }
+    // Có nhiều đèn → hiện bottom sheet chọn phòng
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: AppColors.card,
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      builder: (ctx) => Padding(
+        padding: const EdgeInsets.fromLTRB(24, 16, 24, 32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(child: Container(width: 40, height: 4,
+                decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(2)))),
+            const SizedBox(height: 16),
+            const Text('Chọn phòng', style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 12),
+            ..._lightDevices.map((d) {
+              final room = d['room'] as String;
+              final name = d['name'] as String;
+              return ListTile(
+                leading: const Icon(Icons.lightbulb_rounded, color: AppColors.lightColor),
+                title: Text(name, style: const TextStyle(color: Colors.white)),
+                subtitle: Text(room, style: const TextStyle(color: AppColors.textSecondary, fontSize: 12)),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  Navigator.push(context,
+                      MaterialPageRoute(builder: (_) => LivingRoomLightScreen(room: room)));
+                },
+              );
+            }),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _onTapCamera() {
+    // Navigate về Home tab (index 0) — dùng Navigator pop về root
+    Navigator.of(context).popUntil((r) => r.isFirst);
+  }
+
+  void _onTapMembers() {
+    Navigator.push(context,
+        MaterialPageRoute(builder: (_) => const MembersScreen()));
   }
 
   @override
@@ -44,31 +103,48 @@ class _ProfileScreenState extends State<ProfileScreen> {
           padding: const EdgeInsets.symmetric(horizontal: 20),
           children: [
             const SizedBox(height: 28),
-            _buildAvatar(),
-            const SizedBox(height: 32),
+            _buildHeader(),
+            const SizedBox(height: 28),
             _buildStatRow(),
             const SizedBox(height: 32),
             _sectionTitle('Hệ thống'),
             const SizedBox(height: 12),
             _buildInfoCard([
-              _InfoRow(Icons.wifi_rounded,
-                  'MQTT',
-                  _mqttOk ? 'Đã kết nối' : 'Mất kết nối',
-                  _mqttOk ? AppColors.success : Colors.redAccent),
-              _InfoRow(Icons.lightbulb_rounded,
-                  'Đèn thông minh', '$_lightCount thiết bị', AppColors.lightColor),
-              _InfoRow(Icons.videocam_rounded,
-                  'Camera', '$_cameraCount thiết bị', AppColors.cameraColor),
-              _InfoRow(Icons.people_alt_rounded,
-                  'Thành viên', '$_memberCount người', AppColors.accentLight),
+              _InfoTile(
+                icon: Icons.wifi_rounded,
+                label: 'MQTT',
+                value: _mqttOk ? 'Đã kết nối' : 'Mất kết nối',
+                color: _mqttOk ? AppColors.success : Colors.redAccent,
+              ),
+              _InfoTile(
+                icon: Icons.lightbulb_rounded,
+                label: 'Đèn thông minh',
+                value: '$_lightCount thiết bị',
+                color: AppColors.lightColor,
+                onTap: _lightCount > 0 ? _onTapLight : null,
+              ),
+              _InfoTile(
+                icon: Icons.videocam_rounded,
+                label: 'Camera',
+                value: '$_cameraCount thiết bị',
+                color: AppColors.cameraColor,
+                onTap: _cameraCount > 0 ? _onTapCamera : null,
+              ),
+              _InfoTile(
+                icon: Icons.people_alt_rounded,
+                label: 'Thành viên',
+                value: '$_memberCount người',
+                color: AppColors.accentLight,
+                onTap: _memberCount > 0 ? _onTapMembers : null,
+              ),
             ]),
             const SizedBox(height: 20),
             _sectionTitle('Ứng dụng'),
             const SizedBox(height: 12),
             _buildInfoCard([
-              _InfoRow(Icons.info_outline_rounded, 'Phiên bản', '1.0.0', AppColors.textSecondary),
-              _InfoRow(Icons.code_rounded, 'Nền tảng', 'Flutter + ESP32', AppColors.textSecondary),
-              _InfoRow(Icons.router_rounded, 'Giao thức', 'MQTT / BLE / MJPEG', AppColors.textSecondary),
+              _InfoTile(icon: Icons.info_outline_rounded, label: 'Phiên bản', value: '1.0.0', color: AppColors.textSecondary),
+              _InfoTile(icon: Icons.code_rounded, label: 'Nền tảng', value: 'Flutter + ESP32', color: AppColors.textSecondary),
+              _InfoTile(icon: Icons.router_rounded, label: 'Giao thức', value: 'MQTT / BLE / MJPEG', color: AppColors.textSecondary),
             ]),
             const SizedBox(height: 32),
           ],
@@ -77,24 +153,40 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  Widget _buildAvatar() {
-    return Column(
+  Widget _buildHeader() {
+    return Row(
       children: [
         Container(
-          width: 88, height: 88,
+          width: 64, height: 64,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
             color: AppColors.accentDim,
             border: Border.all(color: AppColors.accentLight.withOpacity(0.4), width: 2),
           ),
-          child: const Icon(Icons.person_rounded, color: AppColors.accentLight, size: 44),
+          child: const Icon(Icons.home_rounded, color: AppColors.accentLight, size: 32),
         ),
-        const SizedBox(height: 14),
-        const Text('Smart Home',
-            style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
-        const SizedBox(height: 4),
-        const Text('Hệ thống nhà thông minh ESP32',
-            style: TextStyle(color: AppColors.textSecondary, fontSize: 13)),
+        const SizedBox(width: 16),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('Smart Home',
+                  style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 2),
+              Text(
+                _mqttOk ? '● Đang hoạt động' : '● Mất kết nối',
+                style: TextStyle(
+                  color: _mqttOk ? AppColors.success : Colors.redAccent,
+                  fontSize: 12, fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+        ),
+        IconButton(
+          onPressed: _loadStats,
+          icon: const Icon(Icons.refresh_rounded, color: Colors.white38, size: 22),
+        ),
       ],
     );
   }
@@ -102,46 +194,55 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Widget _buildStatRow() {
     return Row(
       children: [
-        _statChip(Icons.lightbulb_rounded,    '$_lightCount',  'Đèn',      AppColors.lightColor),
+        _statChip(Icons.lightbulb_rounded, '$_lightCount', 'Đèn',
+            AppColors.lightColor, _lightCount > 0 ? _onTapLight : null),
         const SizedBox(width: 10),
-        _statChip(Icons.videocam_rounded,     '$_cameraCount', 'Camera',   AppColors.cameraColor),
+        _statChip(Icons.videocam_rounded, '$_cameraCount', 'Camera',
+            AppColors.cameraColor, _cameraCount > 0 ? _onTapCamera : null),
         const SizedBox(width: 10),
-        _statChip(Icons.people_alt_rounded,   '$_memberCount', 'Thành viên', AppColors.accentLight),
+        _statChip(Icons.people_alt_rounded, '$_memberCount', 'Thành viên',
+            AppColors.accentLight, _memberCount > 0 ? _onTapMembers : null),
       ],
     );
   }
 
-  Widget _statChip(IconData icon, String value, String label, Color color) {
+  Widget _statChip(IconData icon, String value, String label, Color color, VoidCallback? onTap) {
     return Expanded(
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 16),
-        decoration: BoxDecoration(
-          color: color.withOpacity(0.1),
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: color.withOpacity(0.25)),
-        ),
-        child: Column(
-          children: [
-            Icon(icon, color: color, size: 22),
-            const SizedBox(height: 8),
-            Text(value,
-                style: TextStyle(color: color, fontSize: 20, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 2),
-            Text(label,
-                style: const TextStyle(color: AppColors.textSecondary, fontSize: 11)),
-          ],
+      child: GestureDetector(
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 16),
+          decoration: BoxDecoration(
+            color: color.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: color.withOpacity(onTap != null ? 0.35 : 0.15)),
+          ),
+          child: Column(
+            children: [
+              Icon(icon, color: onTap != null ? color : color.withOpacity(0.4), size: 22),
+              const SizedBox(height: 8),
+              Text(value,
+                  style: TextStyle(
+                      color: onTap != null ? color : color.withOpacity(0.4),
+                      fontSize: 20, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 2),
+              Text(label, style: const TextStyle(color: AppColors.textSecondary, fontSize: 11)),
+              if (onTap != null) ...[
+                const SizedBox(height: 4),
+                Icon(Icons.arrow_forward_ios_rounded, color: color.withOpacity(0.5), size: 10),
+              ],
+            ],
+          ),
         ),
       ),
     );
   }
 
-  Widget _sectionTitle(String title) {
-    return Text(title,
-        style: const TextStyle(color: Colors.white70, fontSize: 13,
-            fontWeight: FontWeight.bold, letterSpacing: 0.5));
-  }
+  Widget _sectionTitle(String title) => Text(title,
+      style: const TextStyle(color: Colors.white70, fontSize: 13,
+          fontWeight: FontWeight.bold, letterSpacing: 0.5));
 
-  Widget _buildInfoCard(List<_InfoRow> rows) {
+  Widget _buildInfoCard(List<_InfoTile> tiles) {
     return Container(
       decoration: BoxDecoration(
         color: AppColors.card,
@@ -149,35 +250,48 @@ class _ProfileScreenState extends State<ProfileScreen> {
         border: Border.all(color: Colors.white.withOpacity(0.07)),
       ),
       child: Column(
-        children: rows.asMap().entries.map((e) {
-          final i   = e.key;
-          final row = e.value;
+        children: tiles.asMap().entries.map((e) {
+          final i    = e.key;
+          final tile = e.value;
           return Column(
             children: [
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
-                child: Row(
-                  children: [
-                    Container(
-                      width: 36, height: 36,
-                      decoration: BoxDecoration(
-                        color: row.color.withOpacity(0.12),
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: Icon(row.icon, color: row.color, size: 18),
+              Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(i == 0
+                      ? 20 : i == tiles.length - 1 ? 20 : 0),
+                  onTap: tile.onTap,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 36, height: 36,
+                          decoration: BoxDecoration(
+                            color: tile.color.withOpacity(0.12),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: Icon(tile.icon, color: tile.color, size: 18),
+                        ),
+                        const SizedBox(width: 14),
+                        Expanded(
+                          child: Text(tile.label,
+                              style: const TextStyle(color: Colors.white, fontSize: 14)),
+                        ),
+                        Text(tile.value,
+                            style: TextStyle(color: tile.color, fontSize: 13,
+                                fontWeight: FontWeight.w600)),
+                        if (tile.onTap != null) ...[
+                          const SizedBox(width: 6),
+                          Icon(Icons.chevron_right_rounded,
+                              color: tile.color.withOpacity(0.5), size: 18),
+                        ],
+                      ],
                     ),
-                    const SizedBox(width: 14),
-                    Expanded(
-                      child: Text(row.label,
-                          style: const TextStyle(color: Colors.white, fontSize: 14)),
-                    ),
-                    Text(row.value,
-                        style: TextStyle(color: row.color, fontSize: 13,
-                            fontWeight: FontWeight.w600)),
-                  ],
+                  ),
                 ),
               ),
-              if (i < rows.length - 1)
+              if (i < tiles.length - 1)
                 const Divider(height: 1, color: Colors.white10, indent: 68),
             ],
           );
@@ -187,9 +301,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 }
 
-class _InfoRow {
+class _InfoTile {
   final IconData icon;
   final String   label, value;
   final Color    color;
-  const _InfoRow(this.icon, this.label, this.value, this.color);
+  final VoidCallback? onTap;
+  const _InfoTile({required this.icon, required this.label,
+      required this.value, required this.color, this.onTap});
 }

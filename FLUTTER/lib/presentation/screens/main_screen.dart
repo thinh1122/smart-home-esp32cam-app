@@ -18,15 +18,15 @@ class _MainScreenState extends State<MainScreen> {
   static const _tabs = [
     _TabItem(icon: Icons.home_rounded,      label: 'Home'),
     _TabItem(icon: Icons.people_alt_rounded, label: 'Members'),
-    _TabItem(icon: Icons.person_rounded,     label: 'Profile'),
     _TabItem(icon: Icons.devices_rounded,    label: 'Devices'),
+    _TabItem(icon: Icons.person_rounded,     label: 'Profile'),
   ];
 
   final _pages = const [
     HomeDashboard(),
     MembersScreen(),
-    ProfileScreen(),
     DevicesScreen(),
+    ProfileScreen(),
   ];
 
   @override
