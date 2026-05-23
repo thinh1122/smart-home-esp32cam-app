@@ -36,6 +36,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
       _memberCount  = members.length;
       _mqttOk       = MQTTService().isConnected;
     });
+    // Nếu chưa kết nối thì thử kết nối
+    if (!_mqttOk) {
+      final ok = await MQTTService().connect();
+      if (mounted) setState(() => _mqttOk = ok);
+    }
   }
 
   // Bấm vào chip đèn → chọn phòng rồi navigate
@@ -107,13 +112,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
             const SizedBox(height: 32),
             _sectionTitle('Hệ thống'),
             const SizedBox(height: 12),
+            _buildMqttTile(),
             _buildInfoCard([
-              _InfoTile(
-                icon: Icons.wifi_rounded,
-                label: 'MQTT',
-                value: _mqttOk ? 'Đã kết nối' : 'Mất kết nối',
-                color: _mqttOk ? AppColors.success : Colors.redAccent,
-              ),
               _InfoTile(
                 icon: Icons.lightbulb_rounded,
                 label: 'Đèn thông minh',
@@ -173,11 +173,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
               const Text('Smart Home',
                   style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
               const SizedBox(height: 2),
-              Text(
-                _mqttOk ? '● Đang hoạt động' : '● Mất kết nối',
-                style: TextStyle(
-                  color: _mqttOk ? AppColors.success : Colors.redAccent,
-                  fontSize: 12, fontWeight: FontWeight.w600,
+              ValueListenableBuilder<bool>(
+                valueListenable: MQTTService().connectionNotifier,
+                builder: (_, connected, __) => Text(
+                  connected ? '● Đang hoạt động' : '● Mất kết nối',
+                  style: TextStyle(
+                    color: connected ? AppColors.success : Colors.redAccent,
+                    fontSize: 12, fontWeight: FontWeight.w600,
+                  ),
                 ),
               ),
             ],
@@ -188,6 +191,65 @@ class _ProfileScreenState extends State<ProfileScreen> {
           icon: const Icon(Icons.refresh_rounded, color: Colors.white38, size: 22),
         ),
       ],
+    );
+  }
+
+  Widget _buildMqttTile() {
+    return ValueListenableBuilder<bool>(
+      valueListenable: MQTTService().connectionNotifier,
+      builder: (_, connected, __) => Container(
+        margin: const EdgeInsets.only(bottom: 8),
+        decoration: BoxDecoration(
+          color: AppColors.card,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: Colors.white.withOpacity(0.07)),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+          child: Row(
+            children: [
+              Container(
+                width: 36, height: 36,
+                decoration: BoxDecoration(
+                  color: (connected ? AppColors.success : Colors.redAccent).withOpacity(0.12),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Icon(Icons.wifi_rounded,
+                    color: connected ? AppColors.success : Colors.redAccent, size: 18),
+              ),
+              const SizedBox(width: 14),
+              const Expanded(child: Text('MQTT',
+                  style: TextStyle(color: Colors.white, fontSize: 14))),
+              if (!connected)
+                GestureDetector(
+                  onTap: () async {
+                    final ok = await MQTTService().connect();
+                    if (mounted) setState(() => _mqttOk = ok);
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    margin: const EdgeInsets.only(right: 8),
+                    decoration: BoxDecoration(
+                      color: Colors.orange.withOpacity(0.15),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.orange.withOpacity(0.4)),
+                    ),
+                    child: const Text('Kết nối lại',
+                        style: TextStyle(color: Colors.orange, fontSize: 11,
+                            fontWeight: FontWeight.bold)),
+                  ),
+                ),
+              Text(
+                connected ? 'Đã kết nối' : 'Mất kết nối',
+                style: TextStyle(
+                  color: connected ? AppColors.success : Colors.redAccent,
+                  fontSize: 13, fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 

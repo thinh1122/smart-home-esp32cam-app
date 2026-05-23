@@ -13,6 +13,7 @@ class MQTTService {
 
   MqttServerClient? _client;
   bool _isConnected = false;
+  final ValueNotifier<bool> connectionNotifier = ValueNotifier(false);
 
   final _faceRecognitionController = StreamController<Map<String, dynamic>>.broadcast();
   final _deviceStateController = StreamController<Map<String, dynamic>>.broadcast();
@@ -53,6 +54,7 @@ class MQTTService {
 
       if (_client!.connectionStatus!.state == MqttConnectionState.connected) {
         _isConnected = true;
+        connectionNotifier.value = true;
         _subscribeToTopics();
         _client!.updates!.listen(_onMessage);
         publish('home/flutter/status', {'status': 'online', 'ts': DateTime.now().toIso8601String()});
@@ -62,6 +64,7 @@ class MQTTService {
     } catch (e) {
       debugPrint('MQTT connect error: $e');
       _isConnected = false;
+      connectionNotifier.value = false;
       return false;
     }
   }
@@ -82,10 +85,22 @@ class MQTTService {
   }
 
   void publish(String topic, Map<String, dynamic> payload) {
-    if (!_isConnected || _client == null) return;
-    final builder = MqttClientPayloadBuilder();
-    builder.addString(jsonEncode(payload));
-    _client!.publishMessage(topic, MqttQos.atLeastOnce, builder.payload!);
+    if (!_isConnected || _client == null) {
+      // Thử kết nối lại rồi gửi
+      connect().then((ok) {
+        if (ok) {
+          Future.delayed(const Duration(milliseconds: 500), () => publish(topic, payload));
+        }
+      });
+      return;
+    }
+    try {
+      final builder = MqttClientPayloadBuilder();
+      builder.addString(jsonEncode(payload));
+      _client!.publishMessage(topic, MqttQos.atLeastOnce, builder.payload!);
+    } catch (e) {
+      debugPrint('MQTT publish error: $e');
+    }
   }
 
   void controlLight(String roomName, bool turnOn) {
@@ -133,11 +148,16 @@ class MQTTService {
     }
   }
 
-  void _onConnected() => _isConnected = true;
+  void _onConnected() {
+    _isConnected = true;
+    connectionNotifier.value = true;
+  }
 
   void _onDisconnected() {
     _isConnected = false;
-    Future.delayed(const Duration(seconds: 5), () {
+    connectionNotifier.value = false;
+    // Retry ngắn hơn: 3s lần 1, sau đó 10s
+    Future.delayed(const Duration(seconds: 3), () {
       if (!_isConnected) connect();
     });
   }
