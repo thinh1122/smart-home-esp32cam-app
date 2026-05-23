@@ -20,6 +20,7 @@ class HomeDashboard extends StatefulWidget {
 class _HomeDashboardState extends State<HomeDashboard> {
   // Notifications
   final List<_AppNotification> _notifications = [];
+  int _unreadCount = 0;
 
   void _addNotification(String title, String body, {bool isAlert = false}) {
     if (!mounted) return;
@@ -29,10 +30,12 @@ class _HomeDashboardState extends State<HomeDashboard> {
         time: DateTime.now(),
       ));
       if (_notifications.length > 50) _notifications.removeLast();
+      _unreadCount++;
     });
   }
 
   void _showNotificationPanel() {
+    setState(() => _unreadCount = 0);
     showModalBottomSheet(
       context: context,
       backgroundColor: AppColors.card,
@@ -394,17 +397,31 @@ class _HomeDashboardState extends State<HomeDashboard> {
           ),
           // Notification bell
           Stack(
+            clipBehavior: Clip.none,
             children: [
               IconButton(
                 onPressed: _showNotificationPanel,
-                icon: const Icon(Icons.notifications_rounded, color: Colors.white70, size: 26),
+                icon: Icon(
+                  _unreadCount > 0
+                      ? Icons.notifications_active_rounded
+                      : Icons.notifications_rounded,
+                  color: _unreadCount > 0 ? Colors.orangeAccent : Colors.white70,
+                  size: 26,
+                ),
               ),
-              if (_notifications.isNotEmpty)
+              if (_unreadCount > 0)
                 Positioned(
-                  right: 8, top: 8,
+                  right: 4, top: 4,
                   child: Container(
-                    width: 8, height: 8,
-                    decoration: const BoxDecoration(color: Colors.redAccent, shape: BoxShape.circle),
+                    padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: Colors.redAccent,
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Text(
+                      _unreadCount > 9 ? '9+' : '$_unreadCount',
+                      style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
+                    ),
                   ),
                 ),
             ],
@@ -815,10 +832,7 @@ class _HomeDashboardState extends State<HomeDashboard> {
     String title, String subtitle, IconData icon, Color color,
     bool isActive, ValueChanged<bool> onChanged, {VoidCallback? onTap}
   ) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
+    return Container(
       decoration: BoxDecoration(
         color: isActive ? AppColors.cardElevated : AppColors.card,
         borderRadius: BorderRadius.circular(20),
@@ -826,36 +840,61 @@ class _HomeDashboardState extends State<HomeDashboard> {
       ),
       child: Row(
         children: [
-          Container(
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(
-              color: color.withOpacity(isActive ? 0.18 : 0.08),
-              borderRadius: BorderRadius.circular(14),
-            ),
-            child: Icon(icon, color: isActive ? color : Colors.white30, size: 22),
-          ),
-          const SizedBox(width: 14),
+          // Phần trái: bấm vào navigate
           Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(title, style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w600)),
-                const SizedBox(height: 2),
-                Text(subtitle, style: const TextStyle(color: AppColors.textSecondary, fontSize: 12)),
-              ],
+            child: Material(
+              color: Colors.transparent,
+              borderRadius: const BorderRadius.only(
+                topLeft: Radius.circular(20), bottomLeft: Radius.circular(20),
+              ),
+              child: InkWell(
+                borderRadius: const BorderRadius.only(
+                  topLeft: Radius.circular(20), bottomLeft: Radius.circular(20),
+                ),
+                onTap: onTap,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
+                  child: Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: color.withOpacity(isActive ? 0.18 : 0.08),
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                        child: Icon(icon, color: isActive ? color : Colors.white30, size: 22),
+                      ),
+                      const SizedBox(width: 14),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(title, style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w600)),
+                            const SizedBox(height: 2),
+                            Text(subtitle, style: const TextStyle(color: AppColors.textSecondary, fontSize: 12)),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
             ),
           ),
-          Switch(
-            value: isActive,
-            onChanged: onChanged,
-            activeColor: color,
-            activeTrackColor: color.withOpacity(0.3),
-            inactiveThumbColor: Colors.white30,
-            inactiveTrackColor: Colors.white10,
+          // Switch tách riêng — không bị GestureDetector chặn
+          Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: Switch(
+              value: isActive,
+              onChanged: onChanged,
+              activeColor: color,
+              activeTrackColor: color.withOpacity(0.3),
+              inactiveThumbColor: Colors.white30,
+              inactiveTrackColor: Colors.white10,
+            ),
           ),
         ],
       ),
-    ),
     );
   }
 }
