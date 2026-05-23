@@ -1,12 +1,10 @@
 import 'dart:async';
-import 'dart:ui';
 import 'package:flutter/material.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/config/app_config.dart';
 import '../../../core/services/mqtt_service.dart';
 import '../../../core/services/device_config_service.dart';
 import '../../../core/services/database_helper.dart';
-import '../../../core/services/notification_service.dart';
 import '../../../core/services/app_notification_service.dart';
 import '../../widgets/live_mjpeg.dart';
 import '../lights/living_room_light_screen.dart';
@@ -22,11 +20,6 @@ class HomeDashboard extends StatefulWidget {
 class _HomeDashboardState extends State<HomeDashboard> {
   final _notifSvc = AppNotificationService.instance;
 
-  void _addNotification(String title, String body, {bool isAlert = false}) {
-    _notifSvc.add(title, body, isAlert: isAlert);
-    if (mounted) setState(() {});
-  }
-
   // Devices từ DB
   List<Map<String, dynamic>> _lights = [];
 
@@ -35,13 +28,8 @@ class _HomeDashboardState extends State<HomeDashboard> {
   final Map<String, double> _lightWatts  = {};
 
   bool _doorLocked = true;
-  bool _mqttConnected = false;
   Key _streamKey = UniqueKey();
   Timer? _retryTimer;
-
-  // Trạng thái nhận diện khuôn mặt mới nhất từ MQTT
-  Map<String, dynamic>? _lastFaceEvent;
-  Timer? _faceEventClearTimer;
 
   // Bounding box khuôn mặt (tọa độ relative 0..1)
   Map<String, dynamic>? _faceBbox;
@@ -83,15 +71,13 @@ class _HomeDashboardState extends State<HomeDashboard> {
     _bboxSub?.cancel();
     _powerSub?.cancel();
     _retryTimer?.cancel();
-    _faceEventClearTimer?.cancel();
     _bboxClearTimer?.cancel();
     super.dispose();
   }
 
   Future<void> _connectMQTT() async {
-    final ok = await MQTTService().connect();
+    await MQTTService().connect();
     if (!mounted) return;
-    setState(() => _mqttConnected = ok);
 
     // Lắng nghe trạng thái thiết bị real-time từ MQTT
     _deviceSub = MQTTService().deviceStateStream.listen((event) {
@@ -108,18 +94,11 @@ class _HomeDashboardState extends State<HomeDashboard> {
       }
     });
 
-    // Lắng nghe MQTT nhận diện khuôn mặt
+    // Lắng nghe MQTT nhận diện khuôn mặt — chỉ hiện banner UI
     _faceSub = MQTTService().faceRecognitionStream.listen((event) {
       if (!mounted) return;
       final topic = event['topic'] as String;
-      final data = event['data'] as Map<String, dynamic>;
-      setState(() => _lastFaceEvent = {'topic': topic, ...data});
-      _faceEventClearTimer?.cancel();
-      _faceEventClearTimer = Timer(const Duration(seconds: 10), () {
-        if (mounted) setState(() => _lastFaceEvent = null);
-      });
-
-      // Banner UI — notification đã được handle bởi AppNotificationService ở main()
+      final data  = event['data'] as Map<String, dynamic>;
       if (topic == AppConfig.topicFaceResult && (data['matched'] as bool? ?? false)) {
         final name = data['name'] as String? ?? '';
         _showBanner('Xin chào $name! Chào mừng về nhà', AppColors.success);
@@ -313,132 +292,6 @@ class _HomeDashboardState extends State<HomeDashboard> {
     );
   }
 
-
-  // ignore: unused_element
-  Widget _buildFaceChip() {
-    final event = _lastFaceEvent;
-    final isStranger = event != null && event['topic'] == AppConfig.topicFaceAlert;
-    final isKnown    = event != null && event['topic'] == AppConfig.topicFaceResult && (event['matched'] as bool? ?? false);
-    final hasEvent   = isStranger || isKnown;
-
-    final color = isStranger ? AppColors.error : isKnown ? AppColors.success : AppColors.textSecondary;
-    final icon  = isStranger ? Icons.warning_amber_rounded : isKnown ? Icons.face_rounded : Icons.notifications_none_rounded;
-    final value = isStranger ? 'Lạ' : isKnown ? (event!['name'] as String? ?? 'OK') : '--';
-    final label = isStranger ? 'Cảnh báo' : isKnown ? 'Nhận diện' : 'Thông báo';
-
-    return Expanded(
-      child: GestureDetector(
-        onTap: hasEvent ? () => _showFaceEventDetail(event!) : null,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 300),
-          padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 10),
-          decoration: BoxDecoration(
-            color: hasEvent ? color.withOpacity(0.12) : AppColors.card,
-            borderRadius: BorderRadius.circular(18),
-            border: Border.all(
-              color: hasEvent ? color.withOpacity(0.4) : Colors.white.withOpacity(0.06),
-              width: hasEvent ? 1.5 : 1,
-            ),
-          ),
-          child: Column(
-            children: [
-              Icon(icon, color: color, size: 18),
-              const SizedBox(height: 6),
-              Text(
-                value,
-                style: TextStyle(color: hasEvent ? color : Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-              const SizedBox(height: 2),
-              Text(label, style: const TextStyle(color: AppColors.textSecondary, fontSize: 9)),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  void _showFaceEventDetail(Map<String, dynamic> event) {
-    final isStranger = event['topic'] == AppConfig.topicFaceAlert;
-    final name       = event['name'] as String? ?? 'Người lạ';
-    final conf       = event['confidence'] as double?;
-    final color      = isStranger ? AppColors.error : AppColors.success;
-    final icon       = isStranger ? Icons.warning_amber_rounded : Icons.check_circle_rounded;
-
-    showDialog(
-      context: context,
-      builder: (_) => BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 6, sigmaY: 6),
-        child: AlertDialog(
-          backgroundColor: AppColors.card,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                padding: const EdgeInsets.all(20),
-                decoration: BoxDecoration(color: color.withOpacity(0.15), shape: BoxShape.circle),
-                child: Icon(icon, color: color, size: 40),
-              ),
-              const SizedBox(height: 16),
-              Text(
-                isStranger ? 'Phát hiện người lạ!' : 'Nhận diện thành công',
-                style: TextStyle(color: color, fontSize: 17, fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 8),
-              Text(name, style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold)),
-              if (conf != null) ...[
-                const SizedBox(height: 6),
-                Text('Độ chính xác: ${(conf * 100).toStringAsFixed(0)}%',
-                    style: const TextStyle(color: AppColors.textSecondary, fontSize: 13)),
-              ],
-              if (!isStranger && event['role'] != null) ...[
-                const SizedBox(height: 6),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: AppColors.accentDim,
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: Text(event['role'] as String,
-                      style: const TextStyle(color: AppColors.accentLight, fontSize: 12, fontWeight: FontWeight.bold)),
-                ),
-              ],
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Đóng', style: TextStyle(color: AppColors.accentLight, fontWeight: FontWeight.bold)),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildStatChip(IconData icon, Color color, String value, String label) {
-    return Expanded(
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 10),
-        decoration: BoxDecoration(
-          color: AppColors.card,
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: Colors.white.withOpacity(0.06)),
-        ),
-        child: Column(
-          children: [
-            Icon(icon, color: color, size: 18),
-            const SizedBox(height: 6),
-            Text(value, style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 2),
-            Text(label, style: const TextStyle(color: AppColors.textSecondary, fontSize: 9)),
-          ],
-        ),
-      ),
-    );
-  }
 
   Widget _buildCameraPreview() {
     return Padding(

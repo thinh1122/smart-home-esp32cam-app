@@ -16,15 +16,12 @@ void main() async {
   // Khởi tạo notification channels
   await NotificationService.instance.init();
 
-  // Connect MQTT rồi bắt đầu lắng nghe face recognition ngay
+  // Connect MQTT
   MQTTService().connect().then((ok) {
     debugPrint(ok ? 'MQTT connected' : 'MQTT offline');
-    // Luôn start listening — tự reconnect khi có stream
-    AppNotificationService.instance.startListening();
   });
 
-  // Cũng start listening ngay cả khi MQTT chưa connect
-  // (stream sẽ có data khi connect thành công sau)
+  // Lắng nghe face recognition — broadcast stream, nhận data khi MQTT có message
   AppNotificationService.instance.startListening();
 
   // Tự động tìm Python AI server trên LAN qua mDNS (background)

@@ -53,11 +53,6 @@ class MQTTService {
       await _client!.connect();
 
       if (_client!.connectionStatus!.state == MqttConnectionState.connected) {
-        _isConnected = true;
-        connectionNotifier.value = true;
-        _subscribeToTopics();
-        _client!.updates!.listen(_onMessage);
-        publish('home/flutter/status', {'status': 'online', 'ts': DateTime.now().toIso8601String()});
         return true;
       }
       return false;
@@ -158,6 +153,9 @@ class MQTTService {
   void _onConnected() {
     _isConnected = true;
     connectionNotifier.value = true;
+    _subscribeToTopics();
+    _client!.updates!.listen(_onMessage);
+    publish('home/flutter/status', {'status': 'online', 'ts': DateTime.now().toIso8601String()});
   }
 
   void _onDisconnected() {
