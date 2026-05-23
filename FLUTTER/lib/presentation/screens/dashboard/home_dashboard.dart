@@ -7,8 +7,10 @@ import '../../../core/services/mqtt_service.dart';
 import '../../../core/services/device_config_service.dart';
 import '../../../core/services/database_helper.dart';
 import '../../../core/services/notification_service.dart';
+import '../../../core/services/app_notification_service.dart';
 import '../../widgets/live_mjpeg.dart';
 import '../lights/living_room_light_screen.dart';
+import '../notifications/notifications_screen.dart';
 
 class HomeDashboard extends StatefulWidget {
   const HomeDashboard({super.key});
@@ -18,134 +20,11 @@ class HomeDashboard extends StatefulWidget {
 }
 
 class _HomeDashboardState extends State<HomeDashboard> {
-  // Notifications
-  final List<_AppNotification> _notifications = [];
-  int _unreadCount = 0;
+  final _notifSvc = AppNotificationService.instance;
 
   void _addNotification(String title, String body, {bool isAlert = false}) {
-    if (!mounted) return;
-    setState(() {
-      _notifications.insert(0, _AppNotification(
-        title: title, body: body, isAlert: isAlert,
-        time: DateTime.now(),
-      ));
-      if (_notifications.length > 50) _notifications.removeLast();
-      _unreadCount++;
-    });
-  }
-
-  void _showNotificationPanel() {
-    setState(() => _unreadCount = 0);
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: AppColors.card,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setModalState) => DraggableScrollableSheet(
-          expand: false,
-          initialChildSize: 0.6,
-          maxChildSize: 0.9,
-          minChildSize: 0.3,
-          builder: (_, controller) => Column(
-            children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(24, 16, 16, 0),
-                child: Row(
-                  children: [
-                    const Icon(Icons.notifications_rounded, color: Colors.white70, size: 20),
-                    const SizedBox(width: 10),
-                    const Expanded(child: Text('Thông báo',
-                        style: TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.bold))),
-                    if (_notifications.isNotEmpty)
-                      TextButton(
-                        onPressed: () {
-                          setState(() => _notifications.clear());
-                          setModalState(() {});
-                        },
-                        child: const Text('Xoá tất cả', style: TextStyle(color: Colors.redAccent, fontSize: 12)),
-                      ),
-                  ],
-                ),
-              ),
-              const Divider(color: Colors.white10, height: 16),
-              Expanded(
-                child: _notifications.isEmpty
-                  ? const Center(
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(Icons.notifications_none_rounded, color: Colors.white24, size: 48),
-                          SizedBox(height: 12),
-                          Text('Chưa có thông báo', style: TextStyle(color: Colors.white38, fontSize: 14)),
-                        ],
-                      ),
-                    )
-                  : ListView.separated(
-                      controller: controller,
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                      itemCount: _notifications.length,
-                      separatorBuilder: (_, __) => const SizedBox(height: 8),
-                      itemBuilder: (_, i) {
-                        final n = _notifications[i];
-                        return Container(
-                          padding: const EdgeInsets.all(14),
-                          decoration: BoxDecoration(
-                            color: n.isAlert
-                              ? Colors.red.withOpacity(0.1)
-                              : Colors.white.withOpacity(0.05),
-                            borderRadius: BorderRadius.circular(14),
-                            border: Border.all(
-                              color: n.isAlert ? Colors.redAccent.withOpacity(0.3) : Colors.white10,
-                            ),
-                          ),
-                          child: Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Icon(
-                                n.isAlert ? Icons.warning_amber_rounded : Icons.info_outline_rounded,
-                                color: n.isAlert ? Colors.redAccent : Colors.white38,
-                                size: 20,
-                              ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(n.title, style: TextStyle(
-                                      color: n.isAlert ? Colors.redAccent : Colors.white,
-                                      fontSize: 13, fontWeight: FontWeight.bold,
-                                    )),
-                                    const SizedBox(height: 4),
-                                    Text(n.body, style: const TextStyle(color: AppColors.textSecondary, fontSize: 12)),
-                                    const SizedBox(height: 6),
-                                    Text(_formatTime(n.time),
-                                        style: const TextStyle(color: AppColors.textDim, fontSize: 10)),
-                                  ],
-                                ),
-                              ),
-                            ],
-                          ),
-                        );
-                      },
-                    ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  String _formatTime(DateTime t) {
-    final now = DateTime.now();
-    final diff = now.difference(t);
-    if (diff.inMinutes < 1) return 'Vừa xong';
-    if (diff.inMinutes < 60) return '${diff.inMinutes} phút trước';
-    if (diff.inHours < 24) return '${diff.inHours} giờ trước';
-    return '${t.day}/${t.month} ${t.hour.toString().padLeft(2,'0')}:${t.minute.toString().padLeft(2,'0')}';
+    _notifSvc.add(title, body, isAlert: isAlert);
+    if (mounted) setState(() {});
   }
 
   // Devices từ DB
@@ -396,35 +275,43 @@ class _HomeDashboardState extends State<HomeDashboard> {
             icon: const Icon(Icons.refresh_rounded, color: Colors.white38, size: 22),
           ),
           // Notification bell
-          Stack(
-            clipBehavior: Clip.none,
-            children: [
-              IconButton(
-                onPressed: _showNotificationPanel,
-                icon: Icon(
-                  _unreadCount > 0
-                      ? Icons.notifications_active_rounded
-                      : Icons.notifications_rounded,
-                  color: _unreadCount > 0 ? Colors.orangeAccent : Colors.white70,
-                  size: 26,
-                ),
-              ),
-              if (_unreadCount > 0)
-                Positioned(
-                  right: 4, top: 4,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
-                    decoration: BoxDecoration(
-                      color: Colors.redAccent,
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: Text(
-                      _unreadCount > 9 ? '9+' : '$_unreadCount',
-                      style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
+          ListenableBuilder(
+            listenable: _notifSvc,
+            builder: (_, __) {
+              final count = _notifSvc.unreadCount;
+              return Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  IconButton(
+                    onPressed: () => Navigator.push(context,
+                      MaterialPageRoute(builder: (_) => const _NotifPage())),
+                    icon: Icon(
+                      count > 0
+                          ? Icons.notifications_active_rounded
+                          : Icons.notifications_rounded,
+                      color: count > 0 ? Colors.orangeAccent : Colors.white70,
+                      size: 26,
                     ),
                   ),
-                ),
-            ],
+                  if (count > 0)
+                    Positioned(
+                      right: 4, top: 4,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: Colors.redAccent,
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Text(
+                          count > 9 ? '9+' : '$count',
+                          style: const TextStyle(color: Colors.white,
+                              fontSize: 10, fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                    ),
+                ],
+              );
+            },
           ),
         ],
       ),
@@ -945,9 +832,12 @@ class _FaceBoxPainter extends CustomPainter {
   bool shouldRepaint(_FaceBoxPainter old) => old.bbox != bbox;
 }
 
-class _AppNotification {
-  final String title, body;
-  final bool isAlert;
-  final DateTime time;
-  const _AppNotification({required this.title, required this.body, required this.isAlert, required this.time});
+// Wrapper để bell icon ở Home navigate vào NotificationsScreen
+class _NotifPage extends StatelessWidget {
+  const _NotifPage();
+  @override
+  Widget build(BuildContext context) {
+    return const NotificationsScreen();
+  }
 }
+

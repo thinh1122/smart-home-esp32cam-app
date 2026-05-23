@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
 import '../../core/theme/app_theme.dart';
+import '../../core/services/app_notification_service.dart';
 import 'dashboard/home_dashboard.dart';
-import 'members/members_screen.dart';
-import 'profile/profile_screen.dart';
 import 'devices/devices_screen.dart';
+import 'notifications/notifications_screen.dart';
+import 'profile/profile_screen.dart';
 
 class MainScreen extends StatefulWidget {
   const MainScreen({super.key});
@@ -15,17 +16,22 @@ class MainScreen extends StatefulWidget {
 class _MainScreenState extends State<MainScreen> {
   int _currentIndex = 0;
 
+  // Cho phép widget con switch tab (bell icon ở Home)
+  void switchTab(int index) {
+    if (mounted) setState(() => _currentIndex = index);
+  }
+
   static const _tabs = [
-    _TabItem(icon: Icons.home_rounded,      label: 'Home'),
-    _TabItem(icon: Icons.people_alt_rounded, label: 'Members'),
-    _TabItem(icon: Icons.devices_rounded,    label: 'Devices'),
-    _TabItem(icon: Icons.person_rounded,     label: 'Profile'),
+    _TabItem(icon: Icons.home_rounded,         label: 'Home'),
+    _TabItem(icon: Icons.devices_rounded,       label: 'Devices'),
+    _TabItem(icon: Icons.notifications_rounded, label: 'Thông báo'),
+    _TabItem(icon: Icons.person_rounded,        label: 'Profile'),
   ];
 
   final _pages = const [
     HomeDashboard(),
-    MembersScreen(),
     DevicesScreen(),
+    NotificationsScreen(),
     ProfileScreen(),
   ];
 
@@ -33,10 +39,7 @@ class _MainScreenState extends State<MainScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.bg,
-      body: IndexedStack(
-        index: _currentIndex,
-        children: _pages,
-      ),
+      body: IndexedStack(index: _currentIndex, children: _pages),
       bottomNavigationBar: _buildBottomNav(),
     );
   }
@@ -63,11 +66,15 @@ class _MainScreenState extends State<MainScreen> {
   }
 
   Widget _buildNavItem(int index) {
-    final isActive = _currentIndex == index;
-    final tab = _tabs[index];
+    final isActive    = _currentIndex == index;
+    final tab         = _tabs[index];
+    final isNotifTab  = index == 2;
 
     return GestureDetector(
-      onTap: () => setState(() => _currentIndex = index),
+      onTap: () {
+        setState(() => _currentIndex = index);
+        if (isNotifTab) AppNotificationService.instance.markAllRead();
+      },
       behavior: HitTestBehavior.opaque,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
@@ -76,32 +83,83 @@ class _MainScreenState extends State<MainScreen> {
           color: isActive ? AppColors.accentDim : Colors.transparent,
           borderRadius: BorderRadius.circular(16),
         ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              tab.icon,
-              color: isActive ? AppColors.accentLight : AppColors.textSecondary,
-              size: 22,
-            ),
-            const SizedBox(height: 4),
-            Text(
-              tab.label,
-              style: TextStyle(
-                color: isActive ? AppColors.accentLight : AppColors.textSecondary,
-                fontSize: 10,
-                fontWeight: isActive ? FontWeight.bold : FontWeight.normal,
+        child: isNotifTab
+            ? _buildNotifIcon(isActive)
+            : Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(tab.icon,
+                      color: isActive ? AppColors.accentLight : AppColors.textSecondary,
+                      size: 22),
+                  const SizedBox(height: 4),
+                  Text(tab.label,
+                      style: TextStyle(
+                        color: isActive ? AppColors.accentLight : AppColors.textSecondary,
+                        fontSize: 10,
+                        fontWeight: isActive ? FontWeight.bold : FontWeight.normal,
+                      )),
+                ],
               ),
-            ),
-          ],
-        ),
       ),
+    );
+  }
+
+  Widget _buildNotifIcon(bool isActive) {
+    return ListenableBuilder(
+      listenable: AppNotificationService.instance,
+      builder: (_, __) {
+        final count = AppNotificationService.instance.unreadCount;
+        return Stack(
+          clipBehavior: Clip.none,
+          children: [
+            Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  count > 0
+                      ? Icons.notifications_active_rounded
+                      : Icons.notifications_rounded,
+                  color: isActive
+                      ? AppColors.accentLight
+                      : count > 0
+                          ? Colors.orangeAccent
+                          : AppColors.textSecondary,
+                  size: 22,
+                ),
+                const SizedBox(height: 4),
+                Text('Thông báo',
+                    style: TextStyle(
+                      color: isActive ? AppColors.accentLight : AppColors.textSecondary,
+                      fontSize: 10,
+                      fontWeight: isActive ? FontWeight.bold : FontWeight.normal,
+                    )),
+              ],
+            ),
+            if (count > 0)
+              Positioned(
+                right: -6, top: -4,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                  decoration: BoxDecoration(
+                    color: Colors.redAccent,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    count > 9 ? '9+' : '$count',
+                    style: const TextStyle(
+                        color: Colors.white, fontSize: 9, fontWeight: FontWeight.bold),
+                  ),
+                ),
+              ),
+          ],
+        );
+      },
     );
   }
 }
 
 class _TabItem {
   final IconData icon;
-  final String label;
+  final String   label;
   const _TabItem({required this.icon, required this.label});
 }
