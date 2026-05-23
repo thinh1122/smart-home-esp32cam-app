@@ -248,16 +248,18 @@ class _AddDeviceScreenState extends State<AddDeviceScreen> with SingleTickerProv
   Widget _buildCategoriesLabel() {
     return const Padding(
       padding: EdgeInsets.symmetric(horizontal: 20),
-      child: Text('Device Categories', style: TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.bold)),
+      child: Text('Thêm thủ công', style: TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.bold)),
     );
   }
 
   Widget _buildCategories() {
     final cats = [
-      _Cat('Lighting', 'Bulbs, Strips', Icons.lightbulb_rounded, AppColors.lightColor),
-      _Cat('Security', 'Cameras, Locks', Icons.security_rounded, AppColors.cameraColor),
-      _Cat('Appliances', 'AC, Fridge', Icons.kitchen_rounded, AppColors.accentLight),
-      _Cat('Climate', 'Thermostats', Icons.thermostat_rounded, AppColors.climateColor),
+      _Cat('Đèn thông minh', 'Bóng đèn, đèn relay', Icons.lightbulb_rounded, AppColors.lightColor,
+          onTap: _addLightManual),
+      _Cat('Camera', 'Camera an ninh', Icons.security_rounded, AppColors.cameraColor,
+          onTap: _addCameraManual),
+      _Cat('Thiết bị khác', 'AC, Tủ lạnh...', Icons.kitchen_rounded, AppColors.accentLight),
+      _Cat('Cảm biến', 'Nhiệt độ, độ ẩm', Icons.thermostat_rounded, AppColors.climateColor),
     ];
 
     return Padding(
@@ -272,30 +274,84 @@ class _AddDeviceScreenState extends State<AddDeviceScreen> with SingleTickerProv
     );
   }
 
+  Future<void> _addLightManual() async {
+    final room = await Navigator.push<_PickResult>(context,
+        MaterialPageRoute(builder: (_) => const _RoomPickerScreen()));
+    if (room == null || !mounted) return;
+    final lightType = await Navigator.push<_PickResult>(context,
+        MaterialPageRoute(builder: (_) => _LightTypePickerScreen(roomLabel: room.label)));
+    if (lightType == null || !mounted) return;
+    await DatabaseHelper.instance.insertDevice({
+      'name': '${lightType.label} - ${room.label}',
+      'device_type': 'light',
+      'room': room.key,
+      'light_type': lightType.key,
+      'mqtt_topic': 'home/devices/light/${room.key}',
+      'ble_mac': '',
+    });
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Đã thêm đèn thành công!'),
+        backgroundColor: Colors.green,
+        duration: Duration(seconds: 2),
+      ));
+      Navigator.pop(context);
+    }
+  }
+
+  Future<void> _addCameraManual() async {
+    await DatabaseHelper.instance.insertDevice({
+      'name': 'Camera an ninh',
+      'device_type': 'camera',
+      'room': 'entrance',
+      'mqtt_topic': 'home/devices/camera/entrance',
+      'ble_mac': '',
+    });
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Đã thêm camera thành công!'),
+        backgroundColor: Colors.green,
+        duration: Duration(seconds: 2),
+      ));
+      Navigator.pop(context);
+    }
+  }
+
   Widget _buildCatCard(_Cat cat) {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: AppColors.card,
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: cat.onTap,
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: Colors.white.withOpacity(0.06)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(
-              color: cat.color.withOpacity(0.15),
-              borderRadius: BorderRadius.circular(14),
+        child: Container(
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            color: AppColors.card,
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(
+              color: cat.onTap != null
+                  ? cat.color.withOpacity(0.25)
+                  : Colors.white.withOpacity(0.06),
             ),
-            child: Icon(cat.icon, color: cat.color, size: 22),
           ),
-          const Spacer(),
-          Text(cat.name, style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold)),
-          const SizedBox(height: 2),
-          Text(cat.subtitle, style: const TextStyle(color: AppColors.textSecondary, fontSize: 11)),
-        ],
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: cat.color.withOpacity(0.15),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Icon(cat.icon, color: cat.color, size: 22),
+              ),
+              const Spacer(),
+              Text(cat.name, style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 2),
+              Text(cat.subtitle, style: const TextStyle(color: AppColors.textSecondary, fontSize: 11)),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -305,7 +361,8 @@ class _Cat {
   final String name, subtitle;
   final IconData icon;
   final Color color;
-  const _Cat(this.name, this.subtitle, this.icon, this.color);
+  final VoidCallback? onTap;
+  const _Cat(this.name, this.subtitle, this.icon, this.color, {this.onTap});
 }
 
 class _PickResult {
