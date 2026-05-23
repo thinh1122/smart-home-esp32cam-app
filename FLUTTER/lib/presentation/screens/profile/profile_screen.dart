@@ -104,8 +104,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
           children: [
             const SizedBox(height: 28),
             _buildHeader(),
-            const SizedBox(height: 28),
-            _buildStatRow(),
             const SizedBox(height: 32),
             _sectionTitle('Hệ thống'),
             const SizedBox(height: 12),
@@ -146,6 +144,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
               _InfoTile(icon: Icons.code_rounded, label: 'Nền tảng', value: 'Flutter + ESP32', color: AppColors.textSecondary),
               _InfoTile(icon: Icons.router_rounded, label: 'Giao thức', value: 'MQTT / BLE / MJPEG', color: AppColors.textSecondary),
             ]),
+            const SizedBox(height: 32),
+            _buildAuthButtons(),
             const SizedBox(height: 32),
           ],
         ),
@@ -191,51 +191,55 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  Widget _buildStatRow() {
-    return Row(
+  Widget _buildAuthButtons() {
+    return Column(
       children: [
-        _statChip(Icons.lightbulb_rounded, '$_lightCount', 'Đèn',
-            AppColors.lightColor, _lightCount > 0 ? _onTapLight : null),
-        const SizedBox(width: 10),
-        _statChip(Icons.videocam_rounded, '$_cameraCount', 'Camera',
-            AppColors.cameraColor, _cameraCount > 0 ? _onTapCamera : null),
-        const SizedBox(width: 10),
-        _statChip(Icons.people_alt_rounded, '$_memberCount', 'Thành viên',
-            AppColors.accentLight, _memberCount > 0 ? _onTapMembers : null),
+        // Đăng nhập
+        SizedBox(
+          width: double.infinity,
+          child: ElevatedButton.icon(
+            onPressed: () => _showComingSoon('Đăng nhập'),
+            icon: const Icon(Icons.login_rounded, size: 20),
+            label: const Text('Đăng nhập', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.accentDim,
+              foregroundColor: AppColors.accentLight,
+              padding: const EdgeInsets.symmetric(vertical: 15),
+              elevation: 0,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+                side: BorderSide(color: AppColors.accentLight.withOpacity(0.3)),
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(height: 12),
+        // Đăng ký
+        SizedBox(
+          width: double.infinity,
+          child: OutlinedButton.icon(
+            onPressed: () => _showComingSoon('Đăng ký'),
+            icon: const Icon(Icons.person_add_rounded, size: 20),
+            label: const Text('Đăng ký tài khoản', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: Colors.white70,
+              padding: const EdgeInsets.symmetric(vertical: 15),
+              side: const BorderSide(color: Colors.white24),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            ),
+          ),
+        ),
       ],
     );
   }
 
-  Widget _statChip(IconData icon, String value, String label, Color color, VoidCallback? onTap) {
-    return Expanded(
-      child: GestureDetector(
-        onTap: onTap,
-        child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 16),
-          decoration: BoxDecoration(
-            color: color.withOpacity(0.1),
-            borderRadius: BorderRadius.circular(18),
-            border: Border.all(color: color.withOpacity(onTap != null ? 0.35 : 0.15)),
-          ),
-          child: Column(
-            children: [
-              Icon(icon, color: onTap != null ? color : color.withOpacity(0.4), size: 22),
-              const SizedBox(height: 8),
-              Text(value,
-                  style: TextStyle(
-                      color: onTap != null ? color : color.withOpacity(0.4),
-                      fontSize: 20, fontWeight: FontWeight.bold)),
-              const SizedBox(height: 2),
-              Text(label, style: const TextStyle(color: AppColors.textSecondary, fontSize: 11)),
-              if (onTap != null) ...[
-                const SizedBox(height: 4),
-                Icon(Icons.arrow_forward_ios_rounded, color: color.withOpacity(0.5), size: 10),
-              ],
-            ],
-          ),
-        ),
-      ),
-    );
+  void _showComingSoon(String action) {
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text('$action sẽ có trong phiên bản tiếp theo'),
+      backgroundColor: AppColors.card,
+      behavior: SnackBarBehavior.floating,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+    ));
   }
 
   Widget _sectionTitle(String title) => Text(title,

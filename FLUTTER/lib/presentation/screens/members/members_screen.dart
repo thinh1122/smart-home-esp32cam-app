@@ -191,9 +191,14 @@ class _MembersScreenState extends State<MembersScreen> {
 
   Widget _buildHeader() {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 20, 20, 16),
+      padding: const EdgeInsets.fromLTRB(8, 20, 20, 16),
       child: Row(
         children: [
+          if (Navigator.canPop(context))
+            IconButton(
+              onPressed: () => Navigator.pop(context),
+              icon: const Icon(Icons.arrow_back_ios_rounded, color: Colors.white70, size: 20),
+            ),
           const Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
