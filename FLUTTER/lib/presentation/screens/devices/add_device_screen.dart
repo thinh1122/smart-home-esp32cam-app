@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/services/device_config_service.dart';
 import '../../../core/services/database_helper.dart';
+import '../../../core/services/mqtt_service.dart';
 import 'ble_wifi_provisioning_screen.dart';
 
 class AddDeviceScreen extends StatefulWidget {
