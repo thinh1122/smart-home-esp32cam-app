@@ -31,13 +31,15 @@
 #define MQTT_CLIENT_ID  "esp32s3_relay_01"
 
 #define RELAY_PIN       2    // GPIO2 → Relay IN
-#define ACS712_PIN      34   // GPIO34 → ACS712 OUT (ADC)
+#define ACS712_PIN      4    // GPIO4 → ACS712 OUT (ADC)
 
-#define ROOM            "living_room"
-#define TOPIC_CMD       "home/devices/light/" ROOM "/command"
-#define TOPIC_STATE     "home/devices/light/" ROOM "/state"
-#define TOPIC_POWER     "home/devices/light/" ROOM "/power"
 #define TOPIC_LOG       "home/logs/activity"
+
+// Room đọc từ NVS — được ghi khi provisioning qua BLE
+String g_room      = "living_room";  // default
+String g_topicCmd;
+String g_topicState;
+String g_topicPower;
 
 #define ACS712_SENSITIVITY  185.0f   // mV/A (5A model)
 #define VOLTAGE_AC          220.0f
@@ -53,6 +55,7 @@
 #define PASS_UUID       "1c95d5e3-d8f7-413a-bf3d-7a2e5d7be87e"
 #define STATUS_UUID     "d8de624e-140f-4a22-8594-e2216b84a5f2"
 #define WIFILIST_UUID   "2b8c9e50-7182-4f32-8414-b49911e0eb7e"
+#define ROOM_UUID       "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
 
 // ============================================================
 // GLOBALS
@@ -96,6 +99,23 @@ class PASScb : public BLECharacteristicCallbacks {
     rxPass = c->getValue().c_str();
     wifiReceived = true;
     Serial.println("BLE PASS received");
+  }
+};
+
+class ROOMcb : public BLECharacteristicCallbacks {
+  void onWrite(BLECharacteristic* c) {
+    String room = c->getValue().c_str();
+    if (room.length() > 0) {
+      g_room = room;
+      g_topicCmd   = "home/devices/light/" + g_room + "/command";
+      g_topicState = "home/devices/light/" + g_room + "/state";
+      g_topicPower = "home/devices/light/" + g_room + "/power";
+      // Lưu vào NVS
+      prefs.begin("cfg", false);
+      prefs.putString("room", g_room);
+      prefs.end();
+      Serial.println("BLE ROOM: " + g_room);
+    }
   }
 };
 
@@ -147,6 +167,9 @@ void initBLE() {
 
   pWifiList = svc->createCharacteristic(WIFILIST_UUID, BLECharacteristic::PROPERTY_READ);
   pWifiList->setValue(list.c_str());
+
+  auto* roomChar = svc->createCharacteristic(ROOM_UUID, BLECharacteristic::PROPERTY_WRITE);
+  roomChar->setCallbacks(new ROOMcb());
 
   svc->start();
   BLEAdvertising* adv = BLEDevice::getAdvertising();
@@ -230,7 +253,7 @@ void publishState() {
   doc["ts"]    = millis();
   char buf[128];
   serializeJson(doc, buf);
-  mqtt.publish(TOPIC_STATE, buf, true);  // retain
+  mqtt.publish(g_topicState.c_str(), buf, true);  // retain
   Serial.printf("State: %s\n", buf);
 }
 
@@ -256,7 +279,7 @@ void publishPower() {
   doc["ts"]      = millis();
   char buf[128];
   serializeJson(doc, buf);
-  mqtt.publish(TOPIC_POWER, buf);
+  mqtt.publish(g_topicPower.c_str(), buf);
   Serial.printf("Power: %.2fA  %.0fW\n", current, watt);
 }
 
@@ -270,6 +293,28 @@ void onMqttMessage(char* topic, byte* payload, unsigned int len) {
 
   StaticJsonDocument<128> doc;
   if (deserializeJson(doc, msg) != DeserializationError::Ok) return;
+
+  // Nhận config room từ Flutter
+  if (doc.containsKey("room")) {
+    String newRoom = doc["room"] | "";
+    if (newRoom.length() > 0 && newRoom != g_room) {
+      // Unsubscribe topic cũ
+      mqtt.unsubscribe(g_topicCmd.c_str());
+      // Cập nhật room
+      g_room       = newRoom;
+      g_topicCmd   = "home/devices/light/" + g_room + "/command";
+      g_topicState = "home/devices/light/" + g_room + "/state";
+      g_topicPower = "home/devices/light/" + g_room + "/power";
+      // Lưu NVS
+      prefs.begin("cfg", false);
+      prefs.putString("room", g_room);
+      prefs.end();
+      // Subscribe topic mới
+      mqtt.subscribe(g_topicCmd.c_str());
+      Serial.println("Room updated: " + g_room);
+    }
+    return;
+  }
 
   String state = doc["state"] | "";
   state.toUpperCase();
@@ -286,14 +331,19 @@ bool connectMQTT() {
 
   String will = "{\"state\":\"OFFLINE\"}";
   bool ok = mqtt.connect(MQTT_CLIENT_ID, nullptr, nullptr,
-                         TOPIC_STATE, 0, true, will.c_str());
+                         g_topicState.c_str(), 0, true, will.c_str());
   if (ok) {
     Serial.println(" OK");
-    mqtt.subscribe(TOPIC_CMD);
+    mqtt.subscribe(g_topicCmd.c_str());
+    // Subscribe topic config để nhận room từ Flutter
+    String mac = WiFi.macAddress();
+    mac.replace(":", "");
+    mac.toLowerCase();
+    mqtt.subscribe(("home/devices/config/" + mac).c_str());
     publishState();
 
     StaticJsonDocument<128> log;
-    log["message"] = "ESP32-S3 " ROOM " online";
+    log["message"] = "ESP32-S3 " + g_room + " online";
     log["type"]    = "info";
     log["ts"]      = millis();
     char logBuf[128];
@@ -353,6 +403,15 @@ void setup() {
   // ADC
   analogReadResolution(12);
   analogSetAttenuation(ADC_11db);
+
+  // Load room từ NVS
+  prefs.begin("cfg", true);
+  g_room = prefs.getString("room", "living_room");
+  prefs.end();
+  g_topicCmd   = "home/devices/light/" + g_room + "/command";
+  g_topicState = "home/devices/light/" + g_room + "/state";
+  g_topicPower = "home/devices/light/" + g_room + "/power";
+  Serial.println("Room: " + g_room);
 
   // Load WiFi
   loadAndConnect();

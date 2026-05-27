@@ -411,6 +411,12 @@ class _DeviceTypeScreenState extends State<_DeviceTypeScreen> {
       'ble_mac': widget.bleMac,
     });
 
+    // Gửi room config xuống ESP32 qua MQTT → ESP32 lưu vào NVS
+    MQTTService().publish('home/devices/config/${widget.bleMac}', {
+      'room': room.key,
+      'ts': DateTime.now().millisecondsSinceEpoch,
+    });
+
     if (mounted) Navigator.pop(context, true);
   }
 
