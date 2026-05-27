@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/services/app_notification_service.dart';
+import '../../core/services/database_helper.dart';
 import 'dashboard/home_dashboard.dart';
 import 'devices/devices_screen.dart';
 import 'notifications/notifications_screen.dart';
@@ -74,6 +75,10 @@ class _MainScreenState extends State<MainScreen> {
       onTap: () {
         setState(() => _currentIndex = index);
         if (isNotifTab) AppNotificationService.instance.markAllRead();
+        // Mỗi lần bấm Home hoặc Devices → trigger reload DB
+        if (index == 0 || index == 1) {
+          DatabaseHelper.deviceListNotifier.value++;
+        }
       },
       behavior: HitTestBehavior.opaque,
       child: AnimatedContainer(
