@@ -20,10 +20,19 @@ class DatabaseHelper {
   Future<Database> _initDB(String filePath) async {
     final dbPath = await getDatabasesPath();
     final path = join(dbPath, filePath);
-    return await openDatabase(path, version: 2, onCreate: _createDB, onUpgrade: _onUpgrade);
+    return await openDatabase(path, version: 3, onCreate: _createDB, onUpgrade: _onUpgrade);
   }
 
   Future _createDB(Database db, int version) async {
+    await db.execute('''
+      CREATE TABLE users (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        email TEXT NOT NULL UNIQUE,
+        password TEXT NOT NULL,
+        created_at TEXT NOT NULL
+      )
+    ''');
     await db.execute('''
       CREATE TABLE members (
         id TEXT PRIMARY KEY,
@@ -66,6 +75,17 @@ class DatabaseHelper {
           light_type TEXT,
           mqtt_topic TEXT,
           ble_mac TEXT,
+          created_at TEXT NOT NULL
+        )
+      ''');
+    }
+    if (oldVersion < 3) {
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS users (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          name TEXT NOT NULL,
+          email TEXT NOT NULL UNIQUE,
+          password TEXT NOT NULL,
           created_at TEXT NOT NULL
         )
       ''');
@@ -136,5 +156,48 @@ class DatabaseHelper {
     final db = await instance.database;
     await db.delete('devices', where: 'id = ?', whereArgs: [id]);
     deviceListNotifier.value++;
+  }
+
+  // ── Users ─────────────────────────────────────────────────
+  Future<int> insertUser(String name, String email, String password) async {
+    final db = await instance.database;
+    return await db.insert('users', {
+      'name': name,
+      'email': email.toLowerCase().trim(),
+      'password': password,
+      'created_at': DateTime.now().toIso8601String(),
+    }, conflictAlgorithm: ConflictAlgorithm.abort);
+  }
+
+  Future<Map<String, dynamic>?> getUserByEmail(String email) async {
+    final db = await instance.database;
+    final result = await db.query('users',
+        where: 'email = ?', whereArgs: [email.toLowerCase().trim()], limit: 1);
+    return result.isEmpty ? null : result.first;
+  }
+
+  Future<bool> emailExists(String email) async {
+    final user = await getUserByEmail(email);
+    return user != null;
+  }
+
+  Future<Map<String, dynamic>?> login(String email, String password) async {
+    final db = await instance.database;
+    final result = await db.query('users',
+        where: 'email = ? AND password = ?',
+        whereArgs: [email.toLowerCase().trim(), password],
+        limit: 1);
+    return result.isEmpty ? null : result.first;
+  }
+
+  Future<void> updateUserName(int id, String name) async {
+    final db = await instance.database;
+    await db.update('users', {'name': name}, where: 'id = ?', whereArgs: [id]);
+  }
+
+  Future<void> updateUserPassword(int id, String newPassword) async {
+    final db = await instance.database;
+    await db.update('users', {'password': newPassword},
+        where: 'id = ?', whereArgs: [id]);
   }
 }

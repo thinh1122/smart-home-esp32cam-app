@@ -1,20 +1,20 @@
 /*
- * ESP32-S3: BLE WiFi Provisioning + Relay + ACS712 + MQTT
+ * ESP32-S3: BLE WiFi Provisioning + Relay + ACS712 + MQTT + Voice Control (INMP441)
  * Arduino Framework — nap bang Arduino IDE hoac PlatformIO
  *
  * Flow:
  *   Boot → doc WiFi tu NVS (Preferences)
- *     Co WiFi → ket noi → MQTT → relay + ACS712
+ *     Co WiFi → ket noi → MQTT → relay + ACS712 + voice
  *     Khong co → BLE mode → Flutter gui SSID+PASS → luu → restart
  *
- * BLE UUIDs giong ESP32-CAM → Flutter reuse code provisioning
  * MQTT Topics:
- *   Sub: home/devices/light/living_room/command  {"state":"ON"/"OFF"}
- *   Pub: home/devices/light/living_room/state    {"state":"ON"/"OFF","ts":...}  retain
- *   Pub: home/devices/light/living_room/power    {"watt":...,"current":...,"state":...,"ts":...}
+ *   Sub: home/devices/light/{room}/command  {"state":"ON"/"OFF"}
+ *   Pub: home/devices/light/{room}/state    {"state":"ON"/"OFF","ts":...}  retain
+ *   Pub: home/devices/light/{room}/power    {"watt":...,"current":...,"state":...,"ts":...}
  */
 
 #include <WiFi.h>
+#include <WiFiClientSecure.h>
 #include <Preferences.h>
 #include <BLEDevice.h>
 #include <BLEServer.h>
@@ -26,30 +26,27 @@
 // ============================================================
 // CONFIG
 // ============================================================
-#define MQTT_BROKER     "broker.emqx.io"
-#define MQTT_PORT       1883
+#define MQTT_BROKER     "93a7685af2254d02a616baa58c6ae86e.s1.eu.hivemq.cloud"
+#define MQTT_PORT       8883
+#define MQTT_USER       "smarthome"
+#define MQTT_PASS       "SmartHome@2026"
 #define MQTT_CLIENT_ID  "esp32s3_relay_01"
 
 #define RELAY_PIN       2    // GPIO2 → Relay IN
-#define ACS712_PIN      4    // GPIO4 → ACS712 OUT (ADC)
+#define ACS712_PIN      7    // GPIO7 → ACS712 OUT (ADC)
 
 #define TOPIC_LOG       "home/logs/activity"
 
-// Room đọc từ NVS — được ghi khi provisioning qua BLE
-String g_room      = "living_room";  // default
-String g_topicCmd;
-String g_topicState;
-String g_topicPower;
-
-#define ACS712_SENSITIVITY  185.0f   // mV/A (5A model)
+#define ACS712_SENSITIVITY  185.0f
 #define VOLTAGE_AC          220.0f
-#define POWER_INTERVAL_MS   2000
+#define POWER_INTERVAL_MS   5000
 
-#define BOOT_PIN            0        // Nút BOOT trên ESP32-S3 = GPIO0
-#define LED_PIN             2        // LED tich hop (chung voi RELAY_PIN neu board co)
-#define RESET_HOLD_MS       2000     // Giu 2s → nhay LED 3 lan → xoa WiFi → BLE mode
+#define BOOT_PIN            0
+#define RESET_HOLD_MS       2000
 
-// BLE UUIDs — giong ESP32-CAM de Flutter reuse
+#define VOICE_THRESHOLD     0.7f
+
+// BLE UUIDs
 #define SERVICE_UUID    "4fafc201-1fb5-459e-8fcc-c5c9c331914b"
 #define SSID_UUID       "beb5483e-36e1-4688-b7f5-ea07361b26a8"
 #define PASS_UUID       "1c95d5e3-d8f7-413a-bf3d-7a2e5d7be87e"
@@ -61,7 +58,7 @@ String g_topicPower;
 // GLOBALS
 // ============================================================
 Preferences       prefs;
-WiFiClient        wifiClient;
+WiFiClientSecure  wifiClient;
 PubSubClient      mqtt(wifiClient);
 
 BLECharacteristic *pStatus   = nullptr;
@@ -71,13 +68,133 @@ bool wifiReceived   = false;
 String rxSSID       = "";
 String rxPass       = "";
 
-bool   relayState      = false;
-unsigned long lastPower     = 0;
-unsigned long lastReconnect = 0;
+String g_room      = "living_room";
+String g_topicCmd;
+String g_topicState;
+String g_topicPower;
 
-// Reset button state
+bool          relayState     = false;
+unsigned long lastPower      = 0;
+unsigned long lastReconnect  = 0;
 unsigned long bootPressStart = 0;
 bool          bootPressed    = false;
+
+// ============================================================
+// RELAY
+// ============================================================
+void relaySet(bool on) {
+  relayState = on;
+  digitalWrite(RELAY_PIN, on ? HIGH : LOW);
+  Serial.printf("Relay %s\n", on ? "ON" : "OFF");
+}
+
+// ============================================================
+// PUBLISH
+// ============================================================
+void publishState() {
+  StaticJsonDocument<128> doc;
+  doc["state"] = relayState ? "ON" : "OFF";
+  doc["ts"]    = millis();
+  char buf[128];
+  serializeJson(doc, buf);
+  mqtt.publish(g_topicState.c_str(), buf, true);
+  Serial.printf("State: %s\n", buf);
+}
+
+void publishPower() {
+  long sum = 0;
+  for (int i = 0; i < 50; i++) {
+    sum += analogRead(ACS712_PIN);
+    delayMicroseconds(200);
+  }
+  float avg     = sum / 50.0f;
+  float volt_mv = (avg / 4095.0f) * 3300.0f;
+  float current = (volt_mv - 1650.0f) / ACS712_SENSITIVITY;
+  if (current < 0)     current = -current;
+  if (current < 0.05f) current = 0.0f;
+  float watt = current * VOLTAGE_AC;
+
+  StaticJsonDocument<128> doc;
+  doc["current"] = round(current * 100) / 100.0f;
+  doc["watt"]    = round(watt);
+  doc["state"]   = relayState ? "ON" : "OFF";
+  doc["ts"]      = millis();
+  char buf[128];
+  serializeJson(doc, buf);
+  mqtt.publish(g_topicPower.c_str(), buf);
+  Serial.printf("Power: %.2fA  %.0fW\n", current, watt);
+}
+
+// ============================================================
+// MQTT CALLBACK
+// ============================================================
+void onMqttMessage(char* topic, byte* payload, unsigned int len) {
+  String msg;
+  for (unsigned int i = 0; i < len; i++) msg += (char)payload[i];
+  Serial.printf("MQTT [%s]: %s\n", topic, msg.c_str());
+
+  StaticJsonDocument<128> doc;
+  if (deserializeJson(doc, msg) != DeserializationError::Ok) return;
+
+  if (doc.containsKey("room")) {
+    String newRoom = doc["room"] | "";
+    if (newRoom.length() > 0 && newRoom != g_room) {
+      mqtt.unsubscribe(g_topicCmd.c_str());
+      g_room       = newRoom;
+      g_topicCmd   = "home/devices/light/" + g_room + "/command";
+      g_topicState = "home/devices/light/" + g_room + "/state";
+      g_topicPower = "home/devices/light/" + g_room + "/power";
+      prefs.begin("cfg", false);
+      prefs.putString("room", g_room);
+      prefs.end();
+      mqtt.subscribe(g_topicCmd.c_str());
+      Serial.println("Room updated: " + g_room);
+    }
+    return;
+  }
+
+  String state = doc["state"] | "";
+  state.toUpperCase();
+  if (state == "ON")       { relaySet(true);  publishState(); }
+  else if (state == "OFF") { relaySet(false); publishState(); }
+}
+
+// ============================================================
+// MQTT CONNECT
+// ============================================================
+bool connectMQTT() {
+  if (mqtt.connected()) return true;
+  Serial.printf("MQTT connecting %s:%d...", MQTT_BROKER, MQTT_PORT);
+
+  // Client ID unique theo MAC
+  String clientId = "esp32s3_";
+  clientId += WiFi.macAddress();
+  clientId.replace(":", "");
+
+  String will = "{\"state\":\"OFFLINE\"}";
+  bool ok = mqtt.connect(clientId.c_str(), MQTT_USER, MQTT_PASS,
+                         g_topicState.c_str(), 0, true, will.c_str());
+  if (ok) {
+    Serial.println(" OK");
+    mqtt.subscribe(g_topicCmd.c_str());
+    String mac = WiFi.macAddress();
+    mac.replace(":", "");
+    mac.toLowerCase();
+    mqtt.subscribe(("home/devices/config/" + mac).c_str());
+    publishState();
+
+    StaticJsonDocument<128> log;
+    log["message"] = "ESP32-S3 " + g_room + " online";
+    log["type"]    = "info";
+    log["ts"]      = millis();
+    char logBuf[128];
+    serializeJson(log, logBuf);
+    mqtt.publish(TOPIC_LOG, logBuf);
+  } else {
+    Serial.printf(" FAIL rc=%d\n", mqtt.state());
+  }
+  return ok;
+}
 
 // ============================================================
 // BLE CALLBACKS
@@ -106,11 +223,10 @@ class ROOMcb : public BLECharacteristicCallbacks {
   void onWrite(BLECharacteristic* c) {
     String room = c->getValue().c_str();
     if (room.length() > 0) {
-      g_room = room;
+      g_room       = room;
       g_topicCmd   = "home/devices/light/" + g_room + "/command";
       g_topicState = "home/devices/light/" + g_room + "/state";
       g_topicPower = "home/devices/light/" + g_room + "/power";
-      // Lưu vào NVS
       prefs.begin("cfg", false);
       prefs.putString("room", g_room);
       prefs.end();
@@ -123,7 +239,6 @@ class ROOMcb : public BLECharacteristicCallbacks {
 // BLE INIT
 // ============================================================
 void initBLE() {
-  // Lay MAC lam ten
   uint8_t mac[6];
   WiFi.macAddress(mac);
   String name = "ESP32S3_Relay-";
@@ -131,7 +246,6 @@ void initBLE() {
   snprintf(buf, sizeof(buf), "%02X%02X", mac[4], mac[5]);
   name += buf;
 
-  // Scan WiFi truoc khi tat WiFi
   WiFi.mode(WIFI_STA);
   WiFi.disconnect();
   int n = WiFi.scanNetworks();
@@ -145,8 +259,6 @@ void initBLE() {
   WiFi.scanDelete();
   WiFi.mode(WIFI_OFF);
   delay(300);
-
-  Serial.println("BLE: " + name);
 
   BLEDevice::init(name.c_str());
   BLEServer* srv = BLEDevice::createServer();
@@ -177,11 +289,11 @@ void initBLE() {
   adv->setScanResponse(true);
   BLEDevice::startAdvertising();
 
-  Serial.println("BLE ready — waiting for Flutter");
+  Serial.println("BLE: " + name + " — waiting for Flutter");
 }
 
 // ============================================================
-// WIFI CONNECT
+// WIFI
 // ============================================================
 void loadAndConnect() {
   prefs.begin("wifi", true);
@@ -189,10 +301,7 @@ void loadAndConnect() {
   String pass = prefs.getString("pass", "");
   prefs.end();
 
-  if (ssid.isEmpty()) {
-    Serial.println("No WiFi saved → BLE mode");
-    return;
-  }
+  if (ssid.isEmpty()) { Serial.println("No WiFi saved → BLE mode"); return; }
 
   Serial.println("Saved WiFi: " + ssid);
   WiFi.mode(WIFI_STA);
@@ -236,130 +345,9 @@ bool connectWiFi(const String& ssid, const String& pass) {
 }
 
 // ============================================================
-// RELAY
-// ============================================================
-void relaySet(bool on) {
-  relayState = on;
-  digitalWrite(RELAY_PIN, on ? HIGH : LOW);
-  Serial.printf("Relay %s\n", on ? "ON" : "OFF");
-}
-
-// ============================================================
-// PUBLISH
-// ============================================================
-void publishState() {
-  StaticJsonDocument<128> doc;
-  doc["state"] = relayState ? "ON" : "OFF";
-  doc["ts"]    = millis();
-  char buf[128];
-  serializeJson(doc, buf);
-  mqtt.publish(g_topicState.c_str(), buf, true);  // retain
-  Serial.printf("State: %s\n", buf);
-}
-
-void publishPower() {
-  // Doc ACS712 — trung binh 50 mau
-  long sum = 0;
-  for (int i = 0; i < 50; i++) {
-    sum += analogRead(ACS712_PIN);
-    delayMicroseconds(200);
-  }
-  float avg     = sum / 50.0f;
-  float volt_mv = (avg / 4095.0f) * 3300.0f;
-  float zero_mv = 1650.0f;
-  float current = (volt_mv - zero_mv) / ACS712_SENSITIVITY;
-  if (current < 0)     current = -current;
-  if (current < 0.05f) current = 0.0f;
-  float watt = current * VOLTAGE_AC;
-
-  StaticJsonDocument<128> doc;
-  doc["current"] = round(current * 100) / 100.0f;
-  doc["watt"]    = round(watt);
-  doc["state"]   = relayState ? "ON" : "OFF";
-  doc["ts"]      = millis();
-  char buf[128];
-  serializeJson(doc, buf);
-  mqtt.publish(g_topicPower.c_str(), buf);
-  Serial.printf("Power: %.2fA  %.0fW\n", current, watt);
-}
-
-// ============================================================
-// MQTT CALLBACK
-// ============================================================
-void onMqttMessage(char* topic, byte* payload, unsigned int len) {
-  String msg;
-  for (unsigned int i = 0; i < len; i++) msg += (char)payload[i];
-  Serial.printf("MQTT [%s]: %s\n", topic, msg.c_str());
-
-  StaticJsonDocument<128> doc;
-  if (deserializeJson(doc, msg) != DeserializationError::Ok) return;
-
-  // Nhận config room từ Flutter
-  if (doc.containsKey("room")) {
-    String newRoom = doc["room"] | "";
-    if (newRoom.length() > 0 && newRoom != g_room) {
-      // Unsubscribe topic cũ
-      mqtt.unsubscribe(g_topicCmd.c_str());
-      // Cập nhật room
-      g_room       = newRoom;
-      g_topicCmd   = "home/devices/light/" + g_room + "/command";
-      g_topicState = "home/devices/light/" + g_room + "/state";
-      g_topicPower = "home/devices/light/" + g_room + "/power";
-      // Lưu NVS
-      prefs.begin("cfg", false);
-      prefs.putString("room", g_room);
-      prefs.end();
-      // Subscribe topic mới
-      mqtt.subscribe(g_topicCmd.c_str());
-      Serial.println("Room updated: " + g_room);
-    }
-    return;
-  }
-
-  String state = doc["state"] | "";
-  state.toUpperCase();
-  if (state == "ON")       { relaySet(true);  publishState(); }
-  else if (state == "OFF") { relaySet(false); publishState(); }
-}
-
-// ============================================================
-// MQTT CONNECT
-// ============================================================
-bool connectMQTT() {
-  if (mqtt.connected()) return true;
-  Serial.printf("MQTT connecting %s:%d...", MQTT_BROKER, MQTT_PORT);
-
-  String will = "{\"state\":\"OFFLINE\"}";
-  bool ok = mqtt.connect(MQTT_CLIENT_ID, nullptr, nullptr,
-                         g_topicState.c_str(), 0, true, will.c_str());
-  if (ok) {
-    Serial.println(" OK");
-    mqtt.subscribe(g_topicCmd.c_str());
-    // Subscribe topic config để nhận room từ Flutter
-    String mac = WiFi.macAddress();
-    mac.replace(":", "");
-    mac.toLowerCase();
-    mqtt.subscribe(("home/devices/config/" + mac).c_str());
-    publishState();
-
-    StaticJsonDocument<128> log;
-    log["message"] = "ESP32-S3 " + g_room + " online";
-    log["type"]    = "info";
-    log["ts"]      = millis();
-    char logBuf[128];
-    serializeJson(log, logBuf);
-    mqtt.publish(TOPIC_LOG, logBuf);
-  } else {
-    Serial.printf(" FAIL rc=%d\n", mqtt.state());
-  }
-  return ok;
-}
-
-// ============================================================
-// RESET BUTTON (BOOT = GPIO0, giu 3s → xoa WiFi → BLE mode)
+// RESET BUTTON
 // ============================================================
 void blinkReset() {
-  // Nhay relay/LED 3 lan bao hieu reset
   for (int i = 0; i < 3; i++) {
     digitalWrite(RELAY_PIN, HIGH); delay(150);
     digitalWrite(RELAY_PIN, LOW);  delay(150);
@@ -367,13 +355,15 @@ void blinkReset() {
 }
 
 void checkResetButton() {
+  if (millis() < 10000) return;  // bỏ qua 10s đầu boot
+
   if (digitalRead(BOOT_PIN) == LOW) {
     if (!bootPressed) {
       bootPressed    = true;
       bootPressStart = millis();
-      Serial.println("BOOT held — giu tiep 2s de reset WiFi...");
+      Serial.println("BOOT held — giu tiep 5s de reset WiFi...");
     } else if (millis() - bootPressStart >= RESET_HOLD_MS) {
-      Serial.println(">>> Reset WiFi! Nhay 3 lan -> xoa NVS -> BLE mode...");
+      Serial.println(">>> Reset WiFi → BLE mode...");
       blinkReset();
       prefs.begin("wifi", false);
       prefs.clear();
@@ -382,7 +372,6 @@ void checkResetButton() {
       ESP.restart();
     }
   } else {
-    if (bootPressed) Serial.println("BOOT released (chua du 2s)");
     bootPressed = false;
   }
 }
@@ -393,18 +382,15 @@ void checkResetButton() {
 void setup() {
   Serial.begin(115200);
   delay(500);
-  Serial.println("\n=== ESP32-S3 Relay + ACS712 + MQTT (Arduino) ===");
+  Serial.println("\n=== ESP32-S3 Relay + ACS712 + MQTT + Voice ===");
 
-  // GPIO
   pinMode(RELAY_PIN, OUTPUT);
   digitalWrite(RELAY_PIN, LOW);
-  pinMode(BOOT_PIN, INPUT_PULLUP);  // Nut BOOT tich hop san tren board
+  pinMode(BOOT_PIN, INPUT_PULLUP);
 
-  // ADC
   analogReadResolution(12);
   analogSetAttenuation(ADC_11db);
 
-  // Load room từ NVS
   prefs.begin("cfg", true);
   g_room = prefs.getString("room", "living_room");
   prefs.end();
@@ -413,11 +399,10 @@ void setup() {
   g_topicPower = "home/devices/light/" + g_room + "/power";
   Serial.println("Room: " + g_room);
 
-  // Load WiFi
   loadAndConnect();
 
   if (WiFi.status() == WL_CONNECTED) {
-    // MQTT
+    wifiClient.setInsecure();  // dùng TLS không xác minh CA cert
     mqtt.setServer(MQTT_BROKER, MQTT_PORT);
     mqtt.setCallback(onMqttMessage);
     mqtt.setKeepAlive(60);
@@ -436,7 +421,6 @@ void setup() {
 void loop() {
   checkResetButton();
 
-  // BLE provisioning flow
   if (wifiReceived) {
     wifiReceived = false;
     if (pStatus) { pStatus->setValue("connecting"); pStatus->notify(); }
@@ -447,22 +431,19 @@ void loop() {
       prefs.putString("ssid", rxSSID);
       prefs.putString("pass", rxPass);
       prefs.end();
-      // Gui IP ve Flutter truoc khi restart de Flutter nhan duoc
       if (pStatus) {
         String s = "connected|" + WiFi.localIP().toString();
         pStatus->setValue(s.c_str());
         pStatus->notify();
-        delay(2000);  // Cho Flutter xu ly notify
+        delay(2000);
       }
       Serial.println("Restarting...");
       ESP.restart();
     }
   }
 
-  // WiFi watchdog
   if (WiFi.status() != WL_CONNECTED) return;
 
-  // MQTT watchdog
   if (!mqtt.connected()) {
     unsigned long now = millis();
     if (now - lastReconnect >= 3000) {
@@ -472,10 +453,11 @@ void loop() {
   }
   mqtt.loop();
 
-  // Power read moi 2s
   unsigned long now = millis();
   if (now - lastPower >= POWER_INTERVAL_MS) {
     lastPower = now;
     publishPower();
   }
+
+  // handleVoice() đã xóa
 }

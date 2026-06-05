@@ -39,7 +39,7 @@ class MQTTService {
       _client!.logging(on: false);
       _client!.keepAlivePeriod = 60;
       _client!.connectTimeoutPeriod = 5000;
-      _client!.secure = false;
+      _client!.secure = true;
       _client!.onDisconnected = _onDisconnected;
       _client!.onConnected = _onConnected;
 
@@ -50,7 +50,7 @@ class MQTTService {
           .withWillQos(MqttQos.atLeastOnce);
       _client!.connectionMessage = connMessage;
 
-      await _client!.connect();
+      await _client!.connect(AppConfig.mqttUsername, AppConfig.mqttPassword);
 
       if (_client!.connectionStatus!.state == MqttConnectionState.connected) {
         return true;

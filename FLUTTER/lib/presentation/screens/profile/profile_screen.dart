@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/services/database_helper.dart';
 import '../../../core/services/mqtt_service.dart';
+import '../../../core/services/auth_service.dart';
 import '../lights/living_room_light_screen.dart';
 import '../members/members_screen.dart';
 
@@ -154,6 +155,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Widget _buildHeader() {
+    final auth = AuthService.instance;
     return Row(
       children: [
         Container(
@@ -163,15 +165,25 @@ class _ProfileScreenState extends State<ProfileScreen> {
             color: AppColors.accentDim,
             border: Border.all(color: AppColors.accentLight.withOpacity(0.4), width: 2),
           ),
-          child: const Icon(Icons.home_rounded, color: AppColors.accentLight, size: 32),
+          child: Center(
+            child: Text(
+              auth.userName.isNotEmpty ? auth.userName[0].toUpperCase() : '?',
+              style: const TextStyle(color: AppColors.accentLight,
+                  fontSize: 26, fontWeight: FontWeight.bold),
+            ),
+          ),
         ),
         const SizedBox(width: 16),
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text('Smart Home',
-                  style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
+              Text(auth.userName.isNotEmpty ? auth.userName : 'Smart Home',
+                  style: const TextStyle(color: Colors.white,
+                      fontSize: 20, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 2),
+              Text(auth.userEmail,
+                  style: const TextStyle(color: AppColors.textSecondary, fontSize: 12)),
               const SizedBox(height: 2),
               ValueListenableBuilder<bool>(
                 valueListenable: MQTTService().connectionNotifier,
@@ -256,38 +268,57 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Widget _buildAuthButtons() {
     return Column(
       children: [
-        // Đăng nhập
+        // Đổi tên
         SizedBox(
           width: double.infinity,
-          child: ElevatedButton.icon(
-            onPressed: () => _showComingSoon('Đăng nhập'),
-            icon: const Icon(Icons.login_rounded, size: 20),
-            label: const Text('Đăng nhập', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.accentDim,
+          child: OutlinedButton.icon(
+            onPressed: _showChangeNameDialog,
+            icon: const Icon(Icons.edit_rounded, size: 18),
+            label: const Text('Đổi tên hiển thị',
+                style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
+            style: OutlinedButton.styleFrom(
               foregroundColor: AppColors.accentLight,
-              padding: const EdgeInsets.symmetric(vertical: 15),
-              elevation: 0,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(16),
-                side: BorderSide(color: AppColors.accentLight.withOpacity(0.3)),
-              ),
+              padding: const EdgeInsets.symmetric(vertical: 14),
+              side: BorderSide(color: AppColors.accentLight.withOpacity(0.3)),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
             ),
           ),
         ),
         const SizedBox(height: 12),
-        // Đăng ký
+        // Đổi mật khẩu
         SizedBox(
           width: double.infinity,
           child: OutlinedButton.icon(
-            onPressed: () => _showComingSoon('Đăng ký'),
-            icon: const Icon(Icons.person_add_rounded, size: 20),
-            label: const Text('Đăng ký tài khoản', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
+            onPressed: _showChangePasswordDialog,
+            icon: const Icon(Icons.lock_outline_rounded, size: 18),
+            label: const Text('Đổi mật khẩu',
+                style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
             style: OutlinedButton.styleFrom(
               foregroundColor: Colors.white70,
-              padding: const EdgeInsets.symmetric(vertical: 15),
+              padding: const EdgeInsets.symmetric(vertical: 14),
               side: const BorderSide(color: Colors.white24),
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            ),
+          ),
+        ),
+        const SizedBox(height: 12),
+        // Đăng xuất
+        SizedBox(
+          width: double.infinity,
+          child: ElevatedButton.icon(
+            onPressed: _confirmLogout,
+            icon: const Icon(Icons.logout_rounded, size: 18),
+            label: const Text('Đăng xuất',
+                style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.error.withOpacity(0.15),
+              foregroundColor: AppColors.error,
+              padding: const EdgeInsets.symmetric(vertical: 14),
+              elevation: 0,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+                side: BorderSide(color: AppColors.error.withOpacity(0.3)),
+              ),
             ),
           ),
         ),
@@ -295,13 +326,163 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  void _showComingSoon(String action) {
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Text('$action sẽ có trong phiên bản tiếp theo'),
-      backgroundColor: AppColors.card,
-      behavior: SnackBarBehavior.floating,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-    ));
+  void _confirmLogout() {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.card,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text('Đăng xuất?',
+            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+        content: const Text('Bạn có chắc muốn đăng xuất không?',
+            style: TextStyle(color: AppColors.textSecondary)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Huỷ', style: TextStyle(color: AppColors.textSecondary)),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(ctx);
+              AuthService.instance.logout();
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.error,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            ),
+            child: const Text('Đăng xuất'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showChangeNameDialog() {
+    final ctrl = TextEditingController(text: AuthService.instance.userName);
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.card,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text('Đổi tên',
+            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+        content: TextField(
+          controller: ctrl,
+          style: const TextStyle(color: Colors.white),
+          decoration: InputDecoration(
+            hintText: 'Nhập tên mới',
+            hintStyle: const TextStyle(color: AppColors.textDim),
+            filled: true,
+            fillColor: AppColors.cardElevated,
+            border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide.none),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Huỷ',
+                style: TextStyle(color: AppColors.textSecondary)),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              final err = await AuthService.instance.changeName(ctrl.text);
+              if (!mounted) return;
+              Navigator.pop(ctx);
+              if (err != null) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text(err)));
+              } else {
+                setState(() {});
+                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                    content: Text('Đã cập nhật tên')));
+              }
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.accent,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            ),
+            child: const Text('Lưu'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showChangePasswordDialog() {
+    final oldCtrl = TextEditingController();
+    final newCtrl = TextEditingController();
+    final conCtrl = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.card,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text('Đổi mật khẩu',
+            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _dialogInput(oldCtrl, 'Mật khẩu cũ', obscure: true),
+            const SizedBox(height: 12),
+            _dialogInput(newCtrl, 'Mật khẩu mới', obscure: true),
+            const SizedBox(height: 12),
+            _dialogInput(conCtrl, 'Xác nhận mật khẩu mới', obscure: true),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Huỷ',
+                style: TextStyle(color: AppColors.textSecondary)),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              if (newCtrl.text != conCtrl.text) {
+                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                    content: Text('Mật khẩu mới không khớp')));
+                return;
+              }
+              final err = await AuthService.instance
+                  .changePassword(oldCtrl.text, newCtrl.text);
+              if (!mounted) return;
+              Navigator.pop(ctx);
+              ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                  content: Text(err ?? 'Đã đổi mật khẩu thành công')));
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.accent,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            ),
+            child: const Text('Lưu'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _dialogInput(TextEditingController ctrl, String hint,
+      {bool obscure = false}) {
+    return TextField(
+      controller: ctrl,
+      obscureText: obscure,
+      style: const TextStyle(color: Colors.white),
+      decoration: InputDecoration(
+        hintText: hint,
+        hintStyle: const TextStyle(color: AppColors.textDim),
+        filled: true,
+        fillColor: AppColors.cardElevated,
+        border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide.none),
+        contentPadding:
+            const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      ),
+    );
   }
 
   Widget _sectionTitle(String title) => Text(title,

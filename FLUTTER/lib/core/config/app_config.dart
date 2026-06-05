@@ -1,9 +1,11 @@
 import '../services/device_config_service.dart';
 
 class AppConfig {
-  // MQTT Broker (HiveMQ Public)
-  static const String mqttHost = 'broker.emqx.io';
-  static const int    mqttPort = 1883;
+  // MQTT Broker (HiveMQ Cloud — SSL/TLS)
+  static const String mqttHost     = '93a7685af2254d02a616baa58c6ae86e.s1.eu.hivemq.cloud';
+  static const int    mqttPort     = 8883;
+  static const String mqttUsername = 'smarthome';
+  static const String mqttPassword = 'SmartHome@2026';
 
   // Python AI Server — IP lưu trong SharedPreferences, thay đổi qua Settings screen
   static String get aiBaseUrl => DeviceConfigService.instance.aiBaseUrl;

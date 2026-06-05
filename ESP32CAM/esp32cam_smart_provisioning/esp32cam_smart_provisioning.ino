@@ -1,5 +1,6 @@
 #include "esp_camera.h"
 #include <WiFi.h>
+#include <WiFiClientSecure.h>
 #include <Preferences.h>
 #include <BLEDevice.h>
 #include <BLEServer.h>
@@ -59,11 +60,13 @@ String receivedPassword = "";
 WiFiServer server(81);
 
 // MQTT
-#define MQTT_BROKER    "broker.emqx.io"
-#define MQTT_PORT      1883
+#define MQTT_BROKER    "93a7685af2254d02a616baa58c6ae86e.s1.eu.hivemq.cloud"
+#define MQTT_PORT      8883
+#define MQTT_USER      "smarthome"
+#define MQTT_PASS      "SmartHome@2026"
 #define MQTT_CLIENT_ID "esp32cam_01"
-WiFiClient   mqttWifi;
-PubSubClient mqttClient(mqttWifi);
+WiFiClientSecure mqttWifi;
+PubSubClient     mqttClient(mqttWifi);
 
 // State management
 enum SystemState {
@@ -405,8 +408,9 @@ void deinitBLE() {
 // MQTT — publish IP để Flutter tự detect
 // ============================================================
 void mqttPublishIp() {
+  mqttWifi.setInsecure();
   mqttClient.setServer(MQTT_BROKER, MQTT_PORT);
-  if (mqttClient.connect(MQTT_CLIENT_ID)) {
+  if (mqttClient.connect(MQTT_CLIENT_ID, MQTT_USER, MQTT_PASS)) {
     String ip   = WiFi.localIP().toString();
     String port = "81";
     String msg  = "{\"ip\":\"" + ip + "\",\"port\":" + port + ",\"type\":\"esp32cam\"}";
