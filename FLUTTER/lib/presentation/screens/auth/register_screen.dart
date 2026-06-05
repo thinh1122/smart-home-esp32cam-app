@@ -42,8 +42,10 @@ class _RegisterScreenState extends State<RegisterScreen> {
     if (!mounted) return;
     if (err != null) {
       setState(() { _loading = false; _error = err; });
+    } else {
+      setState(() { _loading = false; });
+      // ValueNotifier tự trigger _AuthGate rebuild → vào MainScreen
     }
-    // Nếu thành công, ValueNotifier trong AuthService tự trigger app rebuild
   }
 
   @override
