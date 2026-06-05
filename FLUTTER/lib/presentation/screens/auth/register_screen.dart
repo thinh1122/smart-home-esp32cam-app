@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../../core/services/auth_service.dart';
 import '../../../core/theme/app_theme.dart';
+import '../main_screen.dart';
 
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});
@@ -44,7 +45,10 @@ class _RegisterScreenState extends State<RegisterScreen> {
       setState(() { _loading = false; _error = err; });
     } else {
       setState(() { _loading = false; });
-      // ValueNotifier tự trigger _AuthGate rebuild → vào MainScreen
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute(builder: (_) => const MainScreen()),
+        (route) => false,
+      );
     }
   }
 

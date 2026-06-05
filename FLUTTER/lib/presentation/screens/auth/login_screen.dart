@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../../core/services/auth_service.dart';
 import '../../../core/theme/app_theme.dart';
+import '../main_screen.dart';
 import 'register_screen.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -35,7 +36,15 @@ class _LoginScreenState extends State<LoginScreen> {
     );
 
     if (!mounted) return;
-    setState(() { _loading = false; _error = err; });
+    if (err != null) {
+      setState(() { _loading = false; _error = err; });
+    } else {
+      setState(() { _loading = false; });
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute(builder: (_) => const MainScreen()),
+        (route) => false,
+      );
+    }
   }
 
   @override
