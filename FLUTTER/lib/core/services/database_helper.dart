@@ -20,7 +20,7 @@ class DatabaseHelper {
   Future<Database> _initDB(String filePath) async {
     final dbPath = await getDatabasesPath();
     final path = join(dbPath, filePath);
-    return await openDatabase(path, version: 3, onCreate: _createDB, onUpgrade: _onUpgrade);
+    return await openDatabase(path, version: 4, onCreate: _createDB, onUpgrade: _onUpgrade);
   }
 
   Future _createDB(Database db, int version) async {
@@ -79,7 +79,7 @@ class DatabaseHelper {
         )
       ''');
     }
-    if (oldVersion < 3) {
+    if (oldVersion < 4) {
       await db.execute('''
         CREATE TABLE IF NOT EXISTS users (
           id INTEGER PRIMARY KEY AUTOINCREMENT,

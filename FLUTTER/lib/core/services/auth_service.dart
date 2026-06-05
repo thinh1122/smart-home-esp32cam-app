@@ -55,8 +55,9 @@ class AuthService {
       await _savePrefs();
       isLoggedIn.value = true;
       return null;
-    } catch (_) {
-      return 'Đăng ký thất bại, vui lòng thử lại';
+    } catch (e) {
+      debugPrint('Register error: $e');
+      return 'Đăng ký thất bại: $e';
     }
   }
 
