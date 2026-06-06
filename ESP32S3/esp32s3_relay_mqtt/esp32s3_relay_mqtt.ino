@@ -15,6 +15,7 @@
 
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
+#include <esp_mac.h>
 #include <Preferences.h>
 #include <BLEDevice.h>
 #include <BLEServer.h>
@@ -53,6 +54,7 @@
 #define STATUS_UUID     "d8de624e-140f-4a22-8594-e2216b84a5f2"
 #define WIFILIST_UUID   "2b8c9e50-7182-4f32-8414-b49911e0eb7e"
 #define ROOM_UUID       "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+#define DEVID_UUID      "c0de1234-abcd-ef01-2345-67890abcdef0"  // Flutter đọc để lấy device ID
 
 // ============================================================
 // GLOBALS
@@ -72,6 +74,7 @@ String g_room      = "living_room";
 String g_topicCmd;
 String g_topicState;
 String g_topicPower;
+String g_deviceId  = "";   // ID cố định từ WiFi MAC, lưu NVS, dùng làm config topic
 
 bool          relayState     = false;
 unsigned long lastPower      = 0;
@@ -133,19 +136,20 @@ void onMqttMessage(char* topic, byte* payload, unsigned int len) {
   for (unsigned int i = 0; i < len; i++) msg += (char)payload[i];
   Serial.printf("MQTT [%s]: %s\n", topic, msg.c_str());
 
-  StaticJsonDocument<128> doc;
+  StaticJsonDocument<256> doc;
   if (deserializeJson(doc, msg) != DeserializationError::Ok) return;
 
   // Lệnh reset WiFi → xoá NVS rồi restart về BLE mode
   String action = doc["action"] | "";
   if (action == "reset_wifi") {
-    Serial.println(">>> reset_wifi received → clearing WiFi NVS → BLE mode");
+    Serial.println(">>> reset_wifi received → clearing WiFi + cfg NVS → BLE mode");
     relaySet(false);
     mqtt.disconnect();
     delay(300);
     prefs.begin("wifi", false);
     prefs.clear();
     prefs.end();
+    // device_id KHÔNG xoá — nó cố định suốt vòng đời thiết bị
     delay(200);
     ESP.restart();
     return;
@@ -192,10 +196,11 @@ bool connectMQTT() {
   if (ok) {
     Serial.println(" OK");
     mqtt.subscribe(g_topicCmd.c_str());
-    String mac = WiFi.macAddress();
-    mac.replace(":", "");
-    mac.toLowerCase();
-    mqtt.subscribe(("home/devices/config/" + mac).c_str());
+
+    // Subscribe config topic theo Device ID cố định — hoạt động cả Android lẫn iOS
+    mqtt.subscribe(("home/devices/config/" + g_deviceId).c_str());
+    Serial.println("Config topic: home/devices/config/" + g_deviceId);
+
     publishState();
 
     StaticJsonDocument<128> log;
@@ -230,7 +235,7 @@ class PASScb : public BLECharacteristicCallbacks {
   void onWrite(BLECharacteristic* c) {
     rxPass = c->getValue().c_str();
     wifiReceived = true;
-    Serial.println("BLE PASS received");
+    Serial.println("BLE PASS received — device_id: " + g_deviceId);
   }
 };
 
@@ -254,8 +259,9 @@ class ROOMcb : public BLECharacteristicCallbacks {
 // BLE INIT
 // ============================================================
 void initBLE() {
+  // Dùng esp_read_mac thay WiFi.macAddress vì WiFi chưa bật lúc này
   uint8_t mac[6];
-  WiFi.macAddress(mac);
+  esp_read_mac(mac, ESP_MAC_WIFI_STA);
   String name = "ESP32S3_Relay-";
   char buf[5];
   snprintf(buf, sizeof(buf), "%02X%02X", mac[4], mac[5]);
@@ -279,7 +285,7 @@ void initBLE() {
   BLEServer* srv = BLEDevice::createServer();
   srv->setCallbacks(new BLEConn());
 
-  BLEService* svc = srv->createService(SERVICE_UUID);
+  BLEService* svc = srv->createService(BLEUUID(SERVICE_UUID), 20); // 20 handles đủ cho 6 characteristics
 
   auto* ssidChar = svc->createCharacteristic(SSID_UUID, BLECharacteristic::PROPERTY_WRITE);
   ssidChar->setCallbacks(new SSIDcb());
@@ -297,6 +303,10 @@ void initBLE() {
 
   auto* roomChar = svc->createCharacteristic(ROOM_UUID, BLECharacteristic::PROPERTY_WRITE);
   roomChar->setCallbacks(new ROOMcb());
+
+  // Flutter đọc characteristic này để lấy Device ID — hoạt động cả Android lẫn iOS
+  auto* devIdChar = svc->createCharacteristic(DEVID_UUID, BLECharacteristic::PROPERTY_READ);
+  devIdChar->setValue(g_deviceId.c_str());
 
   svc->start();
   BLEAdvertising* adv = BLEDevice::getAdvertising();
@@ -407,8 +417,25 @@ void setup() {
   analogSetAttenuation(ADC_11db);
 
   prefs.begin("cfg", true);
-  g_room = prefs.getString("room", "living_room");
+  g_room     = prefs.getString("room",      "living_room");
+  g_deviceId = prefs.getString("device_id", "");
   prefs.end();
+
+  // Generate device_id một lần duy nhất từ WiFi MAC — cố định suốt vòng đời thiết bị
+  if (g_deviceId.isEmpty()) {
+    uint8_t mac[6];
+    esp_read_mac(mac, ESP_MAC_WIFI_STA);
+    char idBuf[13];
+    snprintf(idBuf, sizeof(idBuf), "%02x%02x%02x%02x%02x%02x",
+             mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+    g_deviceId = String(idBuf);
+    prefs.begin("cfg", false);
+    prefs.putString("device_id", g_deviceId);
+    prefs.end();
+    Serial.println("Device ID generated: " + g_deviceId);
+  } else {
+    Serial.println("Device ID loaded: " + g_deviceId);
+  }
   g_topicCmd   = "home/devices/light/" + g_room + "/command";
   g_topicState = "home/devices/light/" + g_room + "/state";
   g_topicPower = "home/devices/light/" + g_room + "/power";

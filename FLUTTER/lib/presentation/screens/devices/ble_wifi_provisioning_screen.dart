@@ -38,11 +38,12 @@ class _BLEWiFiProvisioningScreenState extends State<BLEWiFiProvisioningScreen> {
   final _passCtrl = TextEditingController();
 
   // BLE UUIDs (must match ESP32 firmware)
-  static const _serviceUUID   = '4fafc201-1fb5-459e-8fcc-c5c9c331914b';
-  static const _ssidCharUUID  = 'beb5483e-36e1-4688-b7f5-ea07361b26a8';
-  static const _passCharUUID  = '1c95d5e3-d8f7-413a-bf3d-7a2e5d7be87e';
+  static const _serviceUUID    = '4fafc201-1fb5-459e-8fcc-c5c9c331914b';
+  static const _ssidCharUUID   = 'beb5483e-36e1-4688-b7f5-ea07361b26a8';
+  static const _passCharUUID   = '1c95d5e3-d8f7-413a-bf3d-7a2e5d7be87e';
   static const _statusCharUUID = 'd8de624e-140f-4a22-8594-e2216b84a5f2';
   static const _wifiListCharUUID = '2b8c9e50-7182-4f32-8414-b49911e0eb7e';
+  static const _devIdCharUUID  = 'c0de1234-abcd-ef01-2345-67890abcdef0'; // Device ID cố định từ ESP32
 
   // State
   bool _isScanning = false;
@@ -55,7 +56,8 @@ class _BLEWiFiProvisioningScreenState extends State<BLEWiFiProvisioningScreen> {
   List<MyWiFiNetwork> _wifiNetworks = [];
   String? _selectedSSID;
   BluetoothDevice? _connectedDevice;
-  BluetoothCharacteristic? _ssidChar, _passChar, _statusChar, _wifiListChar;
+  BluetoothCharacteristic? _ssidChar, _passChar, _statusChar, _wifiListChar, _devIdChar;
+  String _deviceId = ''; // Device ID đọc từ ESP32 qua BLE — dùng thay cho MAC
   String? _esp32IP;
 
   StreamSubscription? _scanSub, _statusSub;
@@ -101,7 +103,7 @@ class _BLEWiFiProvisioningScreenState extends State<BLEWiFiProvisioningScreen> {
       return;
     }
 
-    setState(() { _isScanning = true; _step = 0; _scanResults.clear(); });
+    setState(() { _isScanning = true; _step = 0; _scanResults.clear(); _deviceId = ''; });
     try {
       await FlutterBluePlus.stopScan();
       _scanSub = FlutterBluePlus.scanResults.listen((results) {
@@ -131,9 +133,10 @@ class _BLEWiFiProvisioningScreenState extends State<BLEWiFiProvisioningScreen> {
         if (svc.uuid.toString().toLowerCase() != _serviceUUID.toLowerCase()) continue;
         for (var char in svc.characteristics) {
           final uuid = char.uuid.toString().toLowerCase();
-          if (uuid == _ssidCharUUID.toLowerCase()) _ssidChar = char;
-          if (uuid == _passCharUUID.toLowerCase()) _passChar = char;
+          if (uuid == _ssidCharUUID.toLowerCase())    _ssidChar    = char;
+          if (uuid == _passCharUUID.toLowerCase())    _passChar    = char;
           if (uuid == _wifiListCharUUID.toLowerCase()) _wifiListChar = char;
+          if (uuid == _devIdCharUUID.toLowerCase())   _devIdChar   = char;
           if (uuid == _statusCharUUID.toLowerCase()) {
             _statusChar = char;
             await char.setNotifyValue(true);
@@ -173,6 +176,17 @@ class _BLEWiFiProvisioningScreenState extends State<BLEWiFiProvisioningScreen> {
       if (_ssidChar == null || _passChar == null || _statusChar == null) {
         throw Exception('BLE characteristics not found. Check ESP32 firmware.');
       }
+
+      // Đọc Device ID từ ESP32 — hoạt động cả Android lẫn iOS (không dùng MAC)
+      if (_devIdChar != null) {
+        final idBytes = await _devIdChar!.read();
+        _deviceId = String.fromCharCodes(idBytes).trim();
+      }
+      // Fallback: nếu firmware cũ chưa có characteristic này, dùng remoteId normalize
+      if (_deviceId.isEmpty) {
+        _deviceId = device.remoteId.str.replaceAll(':', '').toLowerCase();
+      }
+      debugPrint('[BLE] Device ID: $_deviceId');
 
       setState(() { _connectedDevice = device; _isConnecting = false; _step = 2; });
       _scanWiFiNetworks();
@@ -267,7 +281,7 @@ class _BLEWiFiProvisioningScreenState extends State<BLEWiFiProvisioningScreen> {
           'deviceIP': ip,
           'deviceName': _connectedDevice?.platformName ?? 'ESP32Device',
           'wifiSSID': _selectedSSID ?? _ssidCtrl.text,
-          'mac': _connectedDevice?.remoteId.str ?? '',
+          'mac': _deviceId, // Device ID cố định từ ESP32 — hoạt động cả Android lẫn iOS
         });
       }
     });

@@ -228,7 +228,8 @@ class _DevicesScreenState extends State<DevicesScreen> {
 
     // Gửi lệnh reset WiFi xuống ESP32 qua MQTT (nếu có MAC)
     if (bleMac.isNotEmpty) {
-      MQTTService().publish('home/devices/config/$bleMac', {
+      final macTopic = bleMac.replaceAll(':', '').toLowerCase();
+      MQTTService().publish('home/devices/config/$macTopic', {
         'action': 'reset_wifi',
         'ts': DateTime.now().millisecondsSinceEpoch,
       });

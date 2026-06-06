@@ -1,9 +1,9 @@
 import '../services/device_config_service.dart';
 
 class AppConfig {
-  // MQTT Broker (HiveMQ Cloud — WebSocket Secure port 8884)
+  // MQTT Broker (HiveMQ Cloud — TCP SSL port 8883)
   static const String mqttHost     = '93a7685af2254d02a616baa58c6ae86e.s1.eu.hivemq.cloud';
-  static const int    mqttPort     = 8884;
+  static const int    mqttPort     = 8883;
   static const String mqttUsername = 'smarthome';
   static const String mqttPassword = 'SmartHome@2026';
 

@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'package:mqtt_client/mqtt_client.dart';
 import 'package:mqtt_client/mqtt_server_client.dart';
 import 'package:flutter/foundation.dart';
@@ -13,6 +14,7 @@ class MQTTService {
 
   MqttServerClient? _client;
   bool _isConnected = false;
+  StreamSubscription? _msgSub;
   final ValueNotifier<bool> connectionNotifier = ValueNotifier(false);
 
   final _faceRecognitionController = StreamController<Map<String, dynamic>>.broadcast();
@@ -34,16 +36,16 @@ class MQTTService {
     if (_isConnected) return true;
 
     try {
+      _client?.disconnect();
+      _client = null;
       final clientId = 'flutter_smarthome_${DateTime.now().millisecondsSinceEpoch}';
-      // Dùng WebSocket Secure (wss://) — hoạt động tốt trên cả iOS và Android
-      final wsUrl = 'wss://${AppConfig.mqttHost}:${AppConfig.mqttPort}/mqtt';
+      // TCP SSL port 8883 — dùng SecurityContext.defaultContext để OS tự xác thực cert HiveMQ
       _client = MqttServerClient.withPort(AppConfig.mqttHost, clientId, AppConfig.mqttPort);
-      _client!.useWebSocket = true;
-      _client!.websocketProtocols = MqttClientConstants.protocolsSingleDefault;
+      _client!.secure = true;
+      _client!.securityContext = SecurityContext.defaultContext;
       _client!.logging(on: false);
       _client!.keepAlivePeriod = 60;
       _client!.connectTimeoutPeriod = 10000;
-      _client!.secure = true;
       _client!.onDisconnected = _onDisconnected;
       _client!.onConnected = _onConnected;
 
@@ -55,7 +57,7 @@ class MQTTService {
           .withWillQos(MqttQos.atLeastOnce);
       _client!.connectionMessage = connMessage;
 
-      debugPrint('MQTT connecting via WSS: $wsUrl');
+      debugPrint('MQTT connecting TCP SSL: ${AppConfig.mqttHost}:${AppConfig.mqttPort}');
       await _client!.connect(AppConfig.mqttUsername, AppConfig.mqttPassword);
 
       debugPrint('MQTT state: ${_client!.connectionStatus!.state}');
@@ -167,7 +169,8 @@ class MQTTService {
     _isConnected = true;
     connectionNotifier.value = true;
     _subscribeToTopics();
-    _client!.updates!.listen(_onMessage);
+    _msgSub?.cancel();
+    _msgSub = _client!.updates!.listen(_onMessage);
     publish('home/flutter/status', {'status': 'online', 'ts': DateTime.now().toIso8601String()});
   }
 
