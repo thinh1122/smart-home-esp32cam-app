@@ -152,7 +152,8 @@ class _AddDeviceScreenState extends State<AddDeviceScreen> with SingleTickerProv
                 backgroundColor: Colors.green,
                 duration: Duration(seconds: 2),
               ));
-              Navigator.pop(context);
+              // Xoá toàn bộ stack BLE+AddDevice, về thẳng DevicesScreen
+              Navigator.of(context).popUntil((route) => route.isFirst);
             }
           } catch (e) {
             if (mounted) {
