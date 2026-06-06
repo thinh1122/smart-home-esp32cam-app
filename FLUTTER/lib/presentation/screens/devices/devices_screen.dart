@@ -26,6 +26,8 @@ class _DevicesScreenState extends State<DevicesScreen> {
   void initState() {
     super.initState();
     _loadDevices();
+    // Resubscribe để nhận retained state từ broker ngay khi vào tab
+    Future.microtask(() => MQTTService().resubscribeState());
 
     _stateSub = MQTTService().deviceStateStream.listen((msg) {
       final topic = msg['topic'] as String;

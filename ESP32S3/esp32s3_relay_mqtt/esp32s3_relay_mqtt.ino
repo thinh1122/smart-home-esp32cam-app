@@ -33,7 +33,7 @@
 #define MQTT_PASS       "SmartHome@2026"
 #define MQTT_CLIENT_ID  "esp32s3_relay_01"
 
-#define RELAY_PIN       2    // GPIO2 → Relay IN
+#define RELAY_PIN       4    // GPIO4 → Relay IN (GPIO2 là strapping pin, conflict khi boot nguồn ngoài)
 #define ACS712_PIN      7    // GPIO7 → ACS712 OUT (ADC)
 
 #define TOPIC_LOG       "home/logs/activity"

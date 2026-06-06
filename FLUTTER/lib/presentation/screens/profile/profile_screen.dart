@@ -342,9 +342,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
             child: const Text('Huỷ', style: TextStyle(color: AppColors.textSecondary)),
           ),
           ElevatedButton(
-            onPressed: () {
+            onPressed: () async {
               Navigator.pop(ctx);
-              AuthService.instance.logout();
+              MQTTService().disconnect();
+              await AuthService.instance.logout();
             },
             style: ElevatedButton.styleFrom(
               backgroundColor: AppColors.error,

@@ -113,6 +113,17 @@ class MQTTService {
     }
   }
 
+  /// Unsubscribe rồi subscribe lại state topics để nhận retained message từ broker.
+  /// Gọi sau khi đăng nhập lại để đồng bộ trạng thái đèn mà không cần ESP32 publish mới.
+  void resubscribeState() {
+    if (!_isConnected || _client == null) return;
+    const stateTopics = [AppConfig.topicDeviceState, 'home/devices/+/+/power'];
+    for (final t in stateTopics) {
+      _client!.unsubscribe(t);
+      _client!.subscribe(t, MqttQos.atLeastOnce);
+    }
+  }
+
   void controlLight(String roomName, bool turnOn) {
     publish('home/devices/light/$roomName/command', {
       'state': turnOn ? 'ON' : 'OFF',

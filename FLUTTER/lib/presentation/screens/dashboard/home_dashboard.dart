@@ -79,6 +79,8 @@ class _HomeDashboardState extends State<HomeDashboard> {
   Future<void> _connectMQTT() async {
     await MQTTService().connect();
     if (!mounted) return;
+    // Resubscribe để nhận retained message — đồng bộ trạng thái đèn sau login/restart
+    MQTTService().resubscribeState();
 
     // Lắng nghe trạng thái thiết bị real-time từ MQTT
     _deviceSub = MQTTService().deviceStateStream.listen((event) {
