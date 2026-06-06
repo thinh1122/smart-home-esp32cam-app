@@ -136,6 +136,21 @@ void onMqttMessage(char* topic, byte* payload, unsigned int len) {
   StaticJsonDocument<128> doc;
   if (deserializeJson(doc, msg) != DeserializationError::Ok) return;
 
+  // Lệnh reset WiFi → xoá NVS rồi restart về BLE mode
+  String action = doc["action"] | "";
+  if (action == "reset_wifi") {
+    Serial.println(">>> reset_wifi received → clearing WiFi NVS → BLE mode");
+    relaySet(false);
+    mqtt.disconnect();
+    delay(300);
+    prefs.begin("wifi", false);
+    prefs.clear();
+    prefs.end();
+    delay(200);
+    ESP.restart();
+    return;
+  }
+
   if (doc.containsKey("room")) {
     String newRoom = doc["room"] | "";
     if (newRoom.length() > 0 && newRoom != g_room) {

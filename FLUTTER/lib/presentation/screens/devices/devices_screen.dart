@@ -168,7 +168,7 @@ class _DevicesScreenState extends State<DevicesScreen> {
         onToggle: (v) => _toggle(room, v),
         onTap:    () => Navigator.push(context,
           MaterialPageRoute(builder: (_) => LivingRoomLightScreen(room: room))),
-        onDelete: () => _deleteDevice(d['id'] as int, room),
+        onDelete: () => _deleteDevice(d['id'] as int, room, d['ble_mac'] as String? ?? ''),
       ),
     );
   }
@@ -188,7 +188,7 @@ class _DevicesScreenState extends State<DevicesScreen> {
         showSwitch: false,
         onToggle:   (_) {},
         onTap:      () {},
-        onDelete:   () => _deleteDevice(d['id'] as int, d['room'] as String),
+        onDelete:   () => _deleteDevice(d['id'] as int, d['room'] as String, d['ble_mac'] as String? ?? ''),
       ),
     );
   }
@@ -205,13 +205,16 @@ class _DevicesScreenState extends State<DevicesScreen> {
     return map[key] ?? 'Đèn thông minh';
   }
 
-  Future<void> _deleteDevice(int id, String room) async {
+  Future<void> _deleteDevice(int id, String room, String bleMac) async {
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: AppColors.card,
         title: const Text('Xoá thiết bị?', style: TextStyle(color: Colors.white)),
-        content: const Text('Thiết bị sẽ bị xoá khỏi danh sách.', style: TextStyle(color: AppColors.textSecondary)),
+        content: const Text(
+          'Thiết bị sẽ bị xoá khỏi danh sách.\nESP32 sẽ xoá WiFi và chờ kết nối lại qua BLE.',
+          style: TextStyle(color: AppColors.textSecondary),
+        ),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Huỷ')),
           TextButton(
@@ -221,9 +224,27 @@ class _DevicesScreenState extends State<DevicesScreen> {
         ],
       ),
     );
-    if (ok == true) {
-      await DatabaseHelper.instance.deleteDevice(id);
-      _loadDevices();
+    if (ok != true) return;
+
+    // Gửi lệnh reset WiFi xuống ESP32 qua MQTT (nếu có MAC)
+    if (bleMac.isNotEmpty) {
+      MQTTService().publish('home/devices/config/$bleMac', {
+        'action': 'reset_wifi',
+        'ts': DateTime.now().millisecondsSinceEpoch,
+      });
+      // Đợi ESP32 nhận lệnh trước khi xóa
+      await Future.delayed(const Duration(milliseconds: 500));
+    }
+
+    await DatabaseHelper.instance.deleteDevice(id);
+    _loadDevices();
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Đã xoá thiết bị. ESP32 đang reset về BLE mode...'),
+        backgroundColor: Colors.orange,
+        duration: Duration(seconds: 3),
+      ));
     }
   }
 
