@@ -240,8 +240,8 @@ class _HomeDashboardState extends State<HomeDashboard> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(_greeting, style: const TextStyle(color: AppColors.textSecondary, fontSize: 13)),
-                const Text('Nguyễn Phùng Thịnh',
-                    style: TextStyle(color: AppColors.textPrimary, fontSize: 18, fontWeight: FontWeight.bold)),
+                Text(AuthService.instance.userName,
+                    style: const TextStyle(color: AppColors.textPrimary, fontSize: 18, fontWeight: FontWeight.bold)),
               ],
             ),
           ),
