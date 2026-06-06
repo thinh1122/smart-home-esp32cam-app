@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io';
 import 'package:mqtt_client/mqtt_client.dart';
 import 'package:mqtt_client/mqtt_server_client.dart';
 import 'package:flutter/foundation.dart';
@@ -36,12 +35,15 @@ class MQTTService {
 
     try {
       final clientId = 'flutter_smarthome_${DateTime.now().millisecondsSinceEpoch}';
+      // Dùng WebSocket Secure (wss://) — hoạt động tốt trên cả iOS và Android
+      final wsUrl = 'wss://${AppConfig.mqttHost}:${AppConfig.mqttPort}/mqtt';
       _client = MqttServerClient.withPort(AppConfig.mqttHost, clientId, AppConfig.mqttPort);
-      _client!.logging(on: true);
+      _client!.useWebSocket = true;
+      _client!.websocketProtocols = MqttClientConstants.protocolsSingleDefault;
+      _client!.logging(on: false);
       _client!.keepAlivePeriod = 60;
       _client!.connectTimeoutPeriod = 10000;
       _client!.secure = true;
-      _client!.securityContext = SecurityContext.defaultContext;
       _client!.onDisconnected = _onDisconnected;
       _client!.onConnected = _onConnected;
 
@@ -53,7 +55,7 @@ class MQTTService {
           .withWillQos(MqttQos.atLeastOnce);
       _client!.connectionMessage = connMessage;
 
-      debugPrint('MQTT connecting to ${AppConfig.mqttHost}:${AppConfig.mqttPort}');
+      debugPrint('MQTT connecting via WSS: $wsUrl');
       await _client!.connect(AppConfig.mqttUsername, AppConfig.mqttPassword);
 
       debugPrint('MQTT state: ${_client!.connectionStatus!.state}');
