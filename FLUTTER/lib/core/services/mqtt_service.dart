@@ -81,18 +81,24 @@ class MQTTService {
 
   void publish(String topic, Map<String, dynamic> payload) {
     if (!_isConnected || _client == null) {
-      // Thử kết nối lại rồi gửi
       connect().then((ok) {
         if (ok) {
-          Future.delayed(const Duration(milliseconds: 500), () => publish(topic, payload));
+          Future.delayed(const Duration(milliseconds: 300), () => _doPublish(topic, payload));
+        } else {
+          debugPrint('MQTT publish skipped — offline: $topic');
         }
       });
       return;
     }
+    _doPublish(topic, payload);
+  }
+
+  void _doPublish(String topic, Map<String, dynamic> payload) {
     try {
       final builder = MqttClientPayloadBuilder();
       builder.addString(jsonEncode(payload));
       _client!.publishMessage(topic, MqttQos.atLeastOnce, builder.payload!);
+      debugPrint('MQTT publish → $topic: $payload');
     } catch (e) {
       debugPrint('MQTT publish error: $e');
     }

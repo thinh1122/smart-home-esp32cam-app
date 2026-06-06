@@ -267,6 +267,7 @@ class _BLEWiFiProvisioningScreenState extends State<BLEWiFiProvisioningScreen> {
           'deviceIP': ip,
           'deviceName': _connectedDevice?.platformName ?? 'ESP32Device',
           'wifiSSID': _selectedSSID ?? _ssidCtrl.text,
+          'mac': _connectedDevice?.remoteId.str ?? '',
         });
       }
     });
