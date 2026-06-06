@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'package:mqtt_client/mqtt_client.dart';
 import 'package:mqtt_client/mqtt_server_client.dart';
 import 'package:flutter/foundation.dart';
@@ -36,22 +37,26 @@ class MQTTService {
     try {
       final clientId = 'flutter_smarthome_${DateTime.now().millisecondsSinceEpoch}';
       _client = MqttServerClient.withPort(AppConfig.mqttHost, clientId, AppConfig.mqttPort);
-      _client!.logging(on: false);
+      _client!.logging(on: true);
       _client!.keepAlivePeriod = 60;
-      _client!.connectTimeoutPeriod = 5000;
+      _client!.connectTimeoutPeriod = 10000;
       _client!.secure = true;
+      _client!.securityContext = SecurityContext.defaultContext;
       _client!.onDisconnected = _onDisconnected;
       _client!.onConnected = _onConnected;
 
       final connMessage = MqttConnectMessage()
+          .withClientIdentifier(clientId)
           .startClean()
           .withWillTopic('home/flutter/status')
           .withWillMessage('offline')
           .withWillQos(MqttQos.atLeastOnce);
       _client!.connectionMessage = connMessage;
 
+      debugPrint('MQTT connecting to ${AppConfig.mqttHost}:${AppConfig.mqttPort}');
       await _client!.connect(AppConfig.mqttUsername, AppConfig.mqttPassword);
 
+      debugPrint('MQTT state: ${_client!.connectionStatus!.state}');
       if (_client!.connectionStatus!.state == MqttConnectionState.connected) {
         return true;
       }
