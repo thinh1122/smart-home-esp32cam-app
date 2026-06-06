@@ -33,7 +33,7 @@
 #define MQTT_PASS       "SmartHome@2026"
 #define MQTT_CLIENT_ID  "esp32s3_relay_01"
 
-#define RELAY_PIN       5    // GPIO5 → Relay IN (tránh GPIO2 strapping pin + GPIO4 đang dùng mic)
+#define RELAY_PIN       1    // GPIO1 → Relay IN
 #define ACS712_PIN      7    // GPIO7 → ACS712 OUT (ADC)
 
 #define TOPIC_LOG       "home/logs/activity"
