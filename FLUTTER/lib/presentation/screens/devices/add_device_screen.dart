@@ -3,6 +3,7 @@ import '../../../core/theme/app_theme.dart';
 import '../../../core/services/device_config_service.dart';
 import '../../../core/services/database_helper.dart';
 import '../../../core/services/mqtt_service.dart';
+import '../../../core/services/auth_service.dart';
 import 'ble_wifi_provisioning_screen.dart';
 
 class AddDeviceScreen extends StatefulWidget {
@@ -289,7 +290,7 @@ class _AddDeviceScreenState extends State<AddDeviceScreen> with SingleTickerProv
       'light_type': lightType.key,
       'mqtt_topic': 'home/devices/light/${room.key}',
       'ble_mac': '',
-    });
+    }, userId: AuthService.instance.userId);
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
         content: Text('Đã thêm đèn thành công!'),
@@ -307,7 +308,7 @@ class _AddDeviceScreenState extends State<AddDeviceScreen> with SingleTickerProv
       'room': 'entrance',
       'mqtt_topic': 'home/devices/camera/entrance',
       'ble_mac': '',
-    });
+    }, userId: AuthService.instance.userId);
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
         content: Text('Đã thêm camera thành công!'),
@@ -390,7 +391,7 @@ class _DeviceTypeScreenState extends State<_DeviceTypeScreen> {
       'room': 'entrance',
       'mqtt_topic': 'home/devices/camera/entrance',
       'ble_mac': widget.bleMac,
-    });
+    }, userId: AuthService.instance.userId);
     if (mounted) Navigator.pop(context, true);
   }
 
@@ -410,7 +411,7 @@ class _DeviceTypeScreenState extends State<_DeviceTypeScreen> {
       'light_type': lightType.key,
       'mqtt_topic': 'home/devices/light/${room.key}',
       'ble_mac': widget.bleMac,
-    });
+    }, userId: AuthService.instance.userId);
 
     // Gửi room config xuống ESP32 qua MQTT → ESP32 lưu vào NVS
     MQTTService().publish('home/devices/config/${widget.bleMac}', {

@@ -27,7 +27,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Future<void> _loadStats() async {
-    final devices = await DatabaseHelper.instance.getAllDevices();
+    final devices = await DatabaseHelper.instance.getAllDevices(userId: AuthService.instance.userId);
     final members = await DatabaseHelper.instance.getAllMembers();
     if (!mounted) return;
     setState(() {

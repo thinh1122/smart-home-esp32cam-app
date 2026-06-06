@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/services/mqtt_service.dart';
 import '../../../core/services/database_helper.dart';
+import '../../../core/services/auth_service.dart';
 import '../lights/living_room_light_screen.dart';
 import 'add_device_screen.dart';
 
@@ -57,7 +58,7 @@ class _DevicesScreenState extends State<DevicesScreen> {
   }
 
   Future<void> _loadDevices() async {
-    final rows = await DatabaseHelper.instance.getAllDevices();
+    final rows = await DatabaseHelper.instance.getAllDevices(userId: AuthService.instance.userId);
     if (mounted) {
       setState(() {
         _devices = rows;

@@ -5,6 +5,7 @@ import '../../../core/config/app_config.dart';
 import '../../../core/services/mqtt_service.dart';
 import '../../../core/services/device_config_service.dart';
 import '../../../core/services/database_helper.dart';
+import '../../../core/services/auth_service.dart';
 import '../../../core/services/app_notification_service.dart';
 import '../../widgets/live_mjpeg.dart';
 import '../lights/living_room_light_screen.dart';
@@ -50,7 +51,7 @@ class _HomeDashboardState extends State<HomeDashboard> {
   }
 
   Future<void> _loadDevices() async {
-    final rows = await DatabaseHelper.instance.getAllDevices();
+    final rows = await DatabaseHelper.instance.getAllDevices(userId: AuthService.instance.userId);
     if (mounted) {
       setState(() {
         _lights = rows.where((d) => d['device_type'] == 'light').toList();
