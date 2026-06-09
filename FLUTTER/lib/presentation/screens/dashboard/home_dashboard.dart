@@ -6,6 +6,7 @@ import '../../../core/services/mqtt_service.dart';
 import '../../../core/services/device_config_service.dart';
 import '../../../core/services/database_helper.dart';
 import '../../../core/services/auth_service.dart';
+import '../../../core/services/avatar_service.dart';
 import '../../../core/services/app_notification_service.dart';
 import '../../widgets/live_mjpeg.dart';
 import '../lights/living_room_light_screen.dart';
@@ -225,16 +226,39 @@ class _HomeDashboardState extends State<HomeDashboard> {
       padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
       child: Row(
         children: [
-          Container(
-            width: 44, height: 44,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              border: Border.all(color: AppColors.accentDim, width: 2),
-              image: const DecorationImage(
-                image: NetworkImage('https://i.pravatar.cc/150?img=11'),
-                fit: BoxFit.cover,
-              ),
-            ),
+          ValueListenableBuilder<String?>(
+            valueListenable: AvatarService.instance,
+            builder: (_, path, __) {
+              final img = AvatarService.instance.imageProvider;
+              return GestureDetector(
+                onTap: () async {
+                  await AvatarService.instance.pickFromGallery();
+                },
+                child: Container(
+                  width: 44, height: 44,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    border: Border.all(color: AppColors.accentDim, width: 2),
+                    color: AppColors.accentDim,
+                    image: img != null
+                        ? DecorationImage(image: img, fit: BoxFit.cover)
+                        : null,
+                  ),
+                  child: img == null
+                      ? Center(
+                          child: Text(
+                            AuthService.instance.userName.isNotEmpty
+                                ? AuthService.instance.userName[0].toUpperCase()
+                                : '?',
+                            style: const TextStyle(
+                                color: AppColors.accentLight,
+                                fontSize: 18, fontWeight: FontWeight.bold),
+                          ),
+                        )
+                      : null,
+                ),
+              );
+            },
           ),
           const SizedBox(width: 14),
           Expanded(

@@ -5,6 +5,35 @@ import '../../../core/theme/app_theme.dart';
 import '../../../core/services/mqtt_service.dart';
 import '../../widgets/painters/brightness_ring_painter.dart';
 
+// Model 1 hẹn giờ (lưu lịch sử)
+class _ScheduleEntry {
+  final String id;
+  bool turnOn;
+  int hour;   // giờ cụ thể để chạy lại
+  int minute;
+  bool enabled;
+  Timer? _timer;
+  Duration remaining;
+
+  _ScheduleEntry({
+    required this.id,
+    required this.turnOn,
+    required this.hour,
+    required this.minute,
+    this.enabled = true,
+  }) : remaining = _calcRemaining(hour, minute);
+
+  static Duration _calcRemaining(int h, int m) {
+    final now = DateTime.now();
+    var target = DateTime(now.year, now.month, now.day, h, m);
+    if (!target.isAfter(now)) target = target.add(const Duration(days: 1));
+    return target.difference(now);
+  }
+
+  String get timeLabel =>
+      '${hour.toString().padLeft(2, '0')}:${minute.toString().padLeft(2, '0')}';
+}
+
 class LivingRoomLightScreen extends StatefulWidget {
   final String room;
   const LivingRoomLightScreen({super.key, this.room = 'living_room'});
@@ -15,21 +44,17 @@ class LivingRoomLightScreen extends StatefulWidget {
 
 class _LivingRoomLightScreenState extends State<LivingRoomLightScreen> {
   bool   _isOn       = false;
-  double _brightness = 0.82;
+  double _brightness = 1.0;
   Timer? _brightnessDebounce;
 
-  // Timer
-  Timer?    _countdownTimer;
-  Duration  _remaining   = Duration.zero;
-  bool      _timerActive = false;
-  bool      _timerTurnOn = false; // false = hẹn tắt, true = hẹn bật
+  final List<_ScheduleEntry> _schedules = [];
+  int _seq = 0;
 
   StreamSubscription? _stateSub;
 
   @override
   void initState() {
     super.initState();
-    // Lắng nghe state từ ESP32 về để đồng bộ UI
     _stateSub = MQTTService().deviceStateStream.listen((msg) {
       final topic = msg['topic'] as String;
       final data  = msg['data'] as Map<String, dynamic>;
@@ -38,20 +63,23 @@ class _LivingRoomLightScreenState extends State<LivingRoomLightScreen> {
         if (mounted) setState(() => _isOn = on);
       }
     });
-    debugPrint('[LightScreen] room=${widget.room} topic=home/devices/light/${widget.room}/command');
   }
 
   @override
   void dispose() {
     _stateSub?.cancel();
     _brightnessDebounce?.cancel();
-    _countdownTimer?.cancel();
+    for (final s in _schedules) { s._timer?.cancel(); }
     super.dispose();
   }
 
   void _toggleLight(bool v) {
     setState(() => _isOn = v);
     MQTTService().controlLight(widget.room, v);
+    if (v) {
+      setState(() => _brightness = 1.0);
+      _publishBrightness(1.0);
+    }
   }
 
   void _publishBrightness(double value) {
@@ -64,47 +92,60 @@ class _LivingRoomLightScreenState extends State<LivingRoomLightScreen> {
     });
   }
 
-  // ── Timer logic ──────────────────────────────────────────────
-  void _startTimer(Duration duration, bool turnOn) {
-    _countdownTimer?.cancel();
-    setState(() {
-      _remaining   = duration;
-      _timerActive = true;
-      _timerTurnOn = turnOn;
-    });
-    _countdownTimer = Timer.periodic(const Duration(seconds: 1), (t) {
+  // ── Khởi động timer cho 1 entry ─────────────────────────────
+  void _startTimer(_ScheduleEntry entry) {
+    entry._timer?.cancel();
+    entry.remaining = _ScheduleEntry._calcRemaining(entry.hour, entry.minute);
+    entry._timer = Timer.periodic(const Duration(seconds: 1), (t) {
       if (!mounted) { t.cancel(); return; }
-      final next = _remaining - const Duration(seconds: 1);
+      final next = entry.remaining - const Duration(seconds: 1);
       if (next <= Duration.zero) {
         t.cancel();
-        final action = turnOn ? true : false;
-        _toggleLight(action);
-        setState(() { _timerActive = false; _remaining = Duration.zero; });
+        _toggleLight(entry.turnOn);
+        setState(() => entry.enabled = false);
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text(turnOn ? 'Đèn đã bật theo hẹn giờ' : 'Đèn đã tắt theo hẹn giờ'),
-          backgroundColor: turnOn ? Colors.green : Colors.blueGrey,
+          content: Text(entry.turnOn ? 'Đèn đã bật theo hẹn giờ' : 'Đèn đã tắt theo hẹn giờ'),
+          backgroundColor: entry.turnOn ? Colors.green : Colors.blueGrey,
         ));
       } else {
-        setState(() => _remaining = next);
+        setState(() => entry.remaining = next);
       }
     });
   }
 
-  void _cancelTimer() {
-    _countdownTimer?.cancel();
-    setState(() { _timerActive = false; _remaining = Duration.zero; });
+  // ── Thêm hẹn giờ mới ────────────────────────────────────────
+  void _addSchedule(int hour, int minute, bool turnOn) {
+    _seq++;
+    final entry = _ScheduleEntry(
+      id: 'sch_$_seq',
+      turnOn: turnOn,
+      hour: hour,
+      minute: minute,
+      enabled: true,
+    );
+    _startTimer(entry);
+    setState(() => _schedules.insert(0, entry));
+  }
+
+  // ── Bật/tắt 1 hẹn giờ ───────────────────────────────────────
+  void _toggleSchedule(_ScheduleEntry entry, bool val) {
+    setState(() => entry.enabled = val);
+    if (val) {
+      _startTimer(entry);
+    } else {
+      entry._timer?.cancel();
+    }
+  }
+
+  // ── Xoá 1 hẹn giờ ───────────────────────────────────────────
+  void _deleteSchedule(String id) {
+    final idx = _schedules.indexWhere((s) => s.id == id);
+    if (idx < 0) return;
+    _schedules[idx]._timer?.cancel();
+    setState(() => _schedules.removeAt(idx));
   }
 
   void _showTimerPicker() {
-    final options = [
-      _TimerOption('15 phút', const Duration(minutes: 15), Icons.alarm_rounded),
-      _TimerOption('30 phút', const Duration(minutes: 30), Icons.alarm_rounded),
-      _TimerOption('1 giờ',   const Duration(hours: 1),    Icons.alarm_rounded),
-      _TimerOption('2 giờ',   const Duration(hours: 2),    Icons.alarm_rounded),
-      _TimerOption('4 giờ',   const Duration(hours: 4),    Icons.alarm_rounded),
-      _TimerOption('8 giờ',   const Duration(hours: 8),    Icons.alarm_rounded),
-    ];
-
     showModalBottomSheet(
       context: context,
       backgroundColor: AppColors.card,
@@ -114,11 +155,19 @@ class _LivingRoomLightScreenState extends State<LivingRoomLightScreen> {
       ),
       builder: (ctx) => _TimerPickerSheet(
         currentlyOn: _isOn,
-        onSelected: (duration, turnOn) {
+        schedules: List.unmodifiable(_schedules),
+        onAdd: (hour, minute, turnOn) {
           Navigator.pop(ctx);
-          _startTimer(duration, turnOn);
+          _addSchedule(hour, minute, turnOn);
         },
-        presets: options,
+        onToggle: (id, val) {
+          final s = _schedules.firstWhere((e) => e.id == id, orElse: () => _schedules.first);
+          _toggleSchedule(s, val);
+          setState(() {});
+        },
+        onDelete: (id) {
+          _deleteSchedule(id);
+        },
       ),
     );
   }
@@ -140,12 +189,11 @@ class _LivingRoomLightScreenState extends State<LivingRoomLightScreen> {
             SliverToBoxAdapter(child: _buildHeader()),
             SliverToBoxAdapter(child: const SizedBox(height: 28)),
             SliverToBoxAdapter(child: _buildBrightnessCard()),
-            SliverToBoxAdapter(child: const SizedBox(height: 20)),
-            if (_timerActive) ...[
-              SliverToBoxAdapter(child: _buildTimerCard()),
+            if (_schedules.isNotEmpty) ...[
               SliverToBoxAdapter(child: const SizedBox(height: 20)),
+              SliverToBoxAdapter(child: _buildScheduleList()),
             ],
-            SliverToBoxAdapter(child: const SizedBox(height: 24)),
+            SliverToBoxAdapter(child: const SizedBox(height: 32)),
           ],
         ),
       ),
@@ -298,16 +346,9 @@ class _LivingRoomLightScreenState extends State<LivingRoomLightScreen> {
                 )),
                 const SizedBox(width: 14),
                 Expanded(child: _ctrlBtn(
-                  Icons.timer_rounded, 'HẸN GIỜ', _timerActive,
+                  Icons.timer_rounded, 'HẸN GIỜ',
+                  _schedules.any((s) => s.enabled),
                   _showTimerPicker,
-                )),
-                const SizedBox(width: 14),
-                Expanded(child: _ctrlBtn(
-                  Icons.brightness_auto_rounded, '100%', false,
-                  _isOn ? () {
-                    setState(() => _brightness = 1.0);
-                    _publishBrightness(1.0);
-                  } : null,
                 )),
               ],
             ),
@@ -317,48 +358,118 @@ class _LivingRoomLightScreenState extends State<LivingRoomLightScreen> {
     );
   }
 
-  Widget _buildTimerCard() {
+  Widget _buildScheduleList() {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20),
-      child: Container(
-        padding: const EdgeInsets.all(20),
-        decoration: BoxDecoration(
-          color: AppColors.accentDim.withOpacity(0.3),
-          borderRadius: BorderRadius.circular(24),
-          border: Border.all(color: AppColors.accentLight.withOpacity(0.3)),
-        ),
-        child: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: AppColors.accentDim,
-                borderRadius: BorderRadius.circular(14),
-              ),
-              child: const Icon(Icons.timer_rounded, color: AppColors.accentLight, size: 24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text('Hẹn giờ',
+                    style: TextStyle(color: Colors.white70, fontSize: 13,
+                        fontWeight: FontWeight.bold, letterSpacing: 0.5)),
+                Text('${_schedules.where((s) => s.enabled).length} đang bật',
+                    style: const TextStyle(color: AppColors.textSecondary, fontSize: 12)),
+              ],
             ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(_timerTurnOn ? 'Hẹn giờ bật đèn' : 'Hẹn giờ tắt đèn',
-                      style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold)),
-                  const SizedBox(height: 4),
-                  Text(
-                    'Còn lại: ${_formatRemaining(_remaining)}',
-                    style: const TextStyle(color: AppColors.accentLight, fontSize: 20, fontWeight: FontWeight.bold),
-                  ),
-                ],
-              ),
+          ),
+          Container(
+            decoration: BoxDecoration(
+              color: AppColors.card,
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: Colors.white.withOpacity(0.07)),
             ),
-            IconButton(
-              onPressed: _cancelTimer,
-              icon: const Icon(Icons.cancel_rounded, color: Colors.redAccent, size: 28),
-              tooltip: 'Huỷ hẹn giờ',
+            child: Column(
+              children: _schedules.asMap().entries.map((e) {
+                final i = e.key;
+                final s = e.value;
+                return Column(
+                  children: [
+                    Dismissible(
+                      key: Key(s.id),
+                      direction: DismissDirection.endToStart,
+                      background: Container(
+                        alignment: Alignment.centerRight,
+                        padding: const EdgeInsets.only(right: 20),
+                        decoration: BoxDecoration(
+                          color: Colors.redAccent.withOpacity(0.15),
+                          borderRadius: BorderRadius.circular(
+                              i == 0 && _schedules.length == 1 ? 20
+                            : i == 0 ? 20 : i == _schedules.length - 1 ? 20 : 0),
+                        ),
+                        child: const Icon(Icons.delete_rounded, color: Colors.redAccent),
+                      ),
+                      onDismissed: (_) => _deleteSchedule(s.id),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+                        child: Row(
+                          children: [
+                            // Giờ lớn như báo thức iOS
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(s.timeLabel,
+                                      style: TextStyle(
+                                          color: s.enabled ? Colors.white : AppColors.textSecondary,
+                                          fontSize: 34, fontWeight: FontWeight.w300,
+                                          letterSpacing: -1)),
+                                  const SizedBox(height: 2),
+                                  Row(
+                                    children: [
+                                      Icon(
+                                        s.turnOn ? Icons.power_rounded : Icons.power_off_rounded,
+                                        color: s.enabled
+                                            ? (s.turnOn ? AppColors.accentLight : Colors.blueGrey.shade300)
+                                            : AppColors.textDim,
+                                        size: 13,
+                                      ),
+                                      const SizedBox(width: 4),
+                                      Text(
+                                        s.turnOn ? 'Hẹn bật' : 'Hẹn tắt',
+                                        style: TextStyle(
+                                            color: s.enabled ? AppColors.textSecondary : AppColors.textDim,
+                                            fontSize: 12),
+                                      ),
+                                      if (s.enabled) ...[
+                                        const SizedBox(width: 8),
+                                        Text('· ${_formatRemaining(s.remaining)}',
+                                            style: TextStyle(
+                                                color: s.turnOn ? AppColors.accentLight : Colors.blueGrey.shade300,
+                                                fontSize: 12, fontWeight: FontWeight.bold)),
+                                      ],
+                                    ],
+                                  ),
+                                ],
+                              ),
+                            ),
+                            Switch(
+                              value: s.enabled,
+                              onChanged: (val) => _toggleSchedule(s, val),
+                              activeColor: AppColors.accentLight,
+                              activeTrackColor: AppColors.accentDim,
+                              inactiveThumbColor: Colors.white30,
+                              inactiveTrackColor: Colors.white10,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    if (i < _schedules.length - 1)
+                      const Divider(height: 1, color: Colors.white10, indent: 18),
+                  ],
+                );
+              }).toList(),
             ),
-          ],
-        ),
+          ),
+          const SizedBox(height: 8),
+          const Text('Vuốt sang trái để xoá',
+              style: TextStyle(color: AppColors.textDim, fontSize: 11)),
+        ],
       ),
     );
   }
@@ -402,18 +513,21 @@ class _LivingRoomLightScreenState extends State<LivingRoomLightScreen> {
   }
 }
 
-class _TimerOption {
-  final String label;
-  final Duration duration;
-  final IconData icon;
-  const _TimerOption(this.label, this.duration, this.icon);
-}
-
+// ── Bottom sheet thêm hẹn giờ mới ───────────────────────────────
 class _TimerPickerSheet extends StatefulWidget {
-  final void Function(Duration, bool turnOn) onSelected;
-  final List<_TimerOption> presets;
   final bool currentlyOn;
-  const _TimerPickerSheet({required this.onSelected, required this.presets, required this.currentlyOn});
+  final List<_ScheduleEntry> schedules;
+  final void Function(int hour, int minute, bool turnOn) onAdd;
+  final void Function(String id, bool val) onToggle;
+  final void Function(String id) onDelete;
+
+  const _TimerPickerSheet({
+    required this.currentlyOn,
+    required this.schedules,
+    required this.onAdd,
+    required this.onToggle,
+    required this.onDelete,
+  });
 
   @override
   State<_TimerPickerSheet> createState() => _TimerPickerSheetState();
@@ -421,14 +535,12 @@ class _TimerPickerSheet extends StatefulWidget {
 
 class _TimerPickerSheetState extends State<_TimerPickerSheet> {
   late bool _turnOn;
-  // 0 = Nhanh, 1 = Đếm ngược, 2 = Giờ cụ thể
+  // 0 = Lịch sử, 1 = Đếm ngược, 2 = Giờ cụ thể
   int _tab = 0;
 
-  // Tab đếm ngược
   int _cdHour = 0;
   int _cdMin  = 30;
 
-  // Tab giờ cụ thể
   late FixedExtentScrollController _hourCtrl;
   late FixedExtentScrollController _minCtrl;
   int _targetHour = 0;
@@ -443,6 +555,8 @@ class _TimerPickerSheetState extends State<_TimerPickerSheet> {
     _targetMin  = now.minute;
     _hourCtrl = FixedExtentScrollController(initialItem: _targetHour);
     _minCtrl  = FixedExtentScrollController(initialItem: _targetMin);
+    // Nếu đã có hẹn giờ thì mở thẳng tab lịch sử
+    _tab = widget.schedules.isNotEmpty ? 0 : 1;
   }
 
   @override
@@ -452,7 +566,6 @@ class _TimerPickerSheetState extends State<_TimerPickerSheet> {
     super.dispose();
   }
 
-  // Tính duration từ giờ cụ thể đến hiện tại
   Duration _durationUntil(int h, int m) {
     final now = DateTime.now();
     var target = DateTime(now.year, now.month, now.day, h, m);
@@ -460,7 +573,12 @@ class _TimerPickerSheetState extends State<_TimerPickerSheet> {
     return target.difference(now);
   }
 
-  void _confirm(Duration d) => widget.onSelected(d, _turnOn);
+  String _formatRemaining(Duration d) {
+    final h = d.inHours;
+    final m = d.inMinutes.remainder(60).toString().padLeft(2, '0');
+    final s = d.inSeconds.remainder(60).toString().padLeft(2, '0');
+    return h > 0 ? '$h:$m:$s' : '$m:$s';
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -468,14 +586,10 @@ class _TimerPickerSheetState extends State<_TimerPickerSheet> {
     final accentDim   = _turnOn ? AppColors.accentDim   : Colors.blueGrey.withOpacity(0.3);
 
     return Padding(
-      padding: EdgeInsets.only(
-        left: 0, right: 0, top: 0,
-        bottom: MediaQuery.of(context).viewInsets.bottom,
-      ),
+      padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // Handle bar
           const SizedBox(height: 12),
           Center(child: Container(width: 40, height: 4,
               decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(2)))),
@@ -492,42 +606,35 @@ class _TimerPickerSheetState extends State<_TimerPickerSheet> {
                   child: Icon(Icons.timer_rounded, color: accentColor, size: 20),
                 ),
                 const SizedBox(width: 14),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(_turnOn ? 'Hẹn giờ bật đèn' : 'Hẹn giờ tắt đèn',
-                        style: const TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.bold)),
-                    Text(_turnOn ? 'Đèn tự bật đúng giờ bạn chọn' : 'Đèn tự tắt đúng giờ bạn chọn',
-                        style: const TextStyle(color: AppColors.textSecondary, fontSize: 12)),
-                  ],
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(_turnOn ? 'Hẹn giờ bật đèn' : 'Hẹn giờ tắt đèn',
+                          style: const TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.bold)),
+                      Text(_turnOn ? 'Đèn tự bật đúng giờ bạn chọn' : 'Đèn tự tắt đúng giờ bạn chọn',
+                          style: const TextStyle(color: AppColors.textSecondary, fontSize: 12)),
+                    ],
+                  ),
+                ),
+                // Nút + thêm mới (chuyển sang tab đếm ngược)
+                GestureDetector(
+                  onTap: () => setState(() => _tab = 2),
+                  child: Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: AppColors.accentDim,
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: const Icon(Icons.add_rounded, color: AppColors.accentLight, size: 20),
+                  ),
                 ),
               ],
             ),
           ),
           const SizedBox(height: 16),
 
-          // Bật / Tắt toggle
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 24),
-            child: Container(
-              padding: const EdgeInsets.all(4),
-              decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.06),
-                borderRadius: BorderRadius.circular(14),
-              ),
-              child: Row(
-                children: [
-                  _modeBtn('Hẹn tắt', Icons.power_off_rounded, !_turnOn,
-                      Colors.blueGrey.shade300, () => setState(() => _turnOn = false)),
-                  _modeBtn('Hẹn bật', Icons.power_rounded, _turnOn,
-                      AppColors.accentLight, () => setState(() => _turnOn = true)),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(height: 16),
-
-          // Tab selector
+          // Tabs
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 24),
             child: Container(
@@ -538,21 +645,20 @@ class _TimerPickerSheetState extends State<_TimerPickerSheet> {
               ),
               child: Row(
                 children: [
-                  _tabBtn('Nhanh',      Icons.bolt_rounded,         0, accentColor),
-                  _tabBtn('Đếm ngược', Icons.hourglass_top_rounded, 1, accentColor),
-                  _tabBtn('Giờ cụ thể', Icons.schedule_rounded,     2, accentColor),
+                  _tabBtn('Lịch sử',    Icons.history_rounded,         0, accentColor),
+                  _tabBtn('Đếm ngược', Icons.hourglass_top_rounded,    1, accentColor),
+                  _tabBtn('Giờ cụ thể', Icons.schedule_rounded,        2, accentColor),
                 ],
               ),
             ),
           ),
           const SizedBox(height: 20),
 
-          // Tab content
           AnimatedSwitcher(
             duration: const Duration(milliseconds: 200),
             child: KeyedSubtree(
               key: ValueKey(_tab),
-              child: _tab == 0 ? _buildQuickTab(accentColor, accentDim)
+              child: _tab == 0 ? _buildHistoryTab()
                    : _tab == 1 ? _buildCountdownTab(accentColor, accentDim)
                    :             _buildTargetTimeTab(accentColor, accentDim),
             ),
@@ -563,54 +669,152 @@ class _TimerPickerSheetState extends State<_TimerPickerSheet> {
     );
   }
 
-  // ── Quick presets tab ──
-  Widget _buildQuickTab(Color accent, Color dim) {
+  // ── Tab Lịch sử (giống iOS Clock) ──
+  Widget _buildHistoryTab() {
+    if (widget.schedules.isEmpty) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+        child: Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(28),
+          decoration: BoxDecoration(
+            color: Colors.white.withOpacity(0.04),
+            borderRadius: BorderRadius.circular(20),
+          ),
+          child: Column(
+            children: [
+              const Icon(Icons.timer_off_rounded, color: Colors.white24, size: 36),
+              const SizedBox(height: 10),
+              const Text('Chưa có hẹn giờ nào',
+                  style: TextStyle(color: AppColors.textSecondary, fontSize: 14)),
+              const SizedBox(height: 4),
+              const Text('Bấm + hoặc chọn tab "Đếm ngược" / "Giờ cụ thể" để thêm',
+                  style: TextStyle(color: AppColors.textDim, fontSize: 11),
+                  textAlign: TextAlign.center),
+            ],
+          ),
+        ),
+      );
+    }
+
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 24),
-      child: Column(
-        children: [
-          GridView.count(
-            crossAxisCount: 3,
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            mainAxisSpacing: 10,
-            crossAxisSpacing: 10,
-            childAspectRatio: 1.6,
-            children: widget.presets.map((o) => Material(
-              color: Colors.transparent,
-              child: InkWell(
-                borderRadius: BorderRadius.circular(14),
-                onTap: () => _confirm(o.duration),
-                child: Container(
-                  decoration: BoxDecoration(
-                    color: dim.withOpacity(0.5),
-                    borderRadius: BorderRadius.circular(14),
-                    border: Border.all(color: accent.withOpacity(0.25)),
+      child: Container(
+        decoration: BoxDecoration(
+          color: AppColors.cardElevated,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: Colors.white.withOpacity(0.07)),
+        ),
+        child: Column(
+          children: widget.schedules.asMap().entries.map((e) {
+            final i = e.key;
+            final s = e.value;
+            return Column(
+              children: [
+                Dismissible(
+                  key: Key(s.id),
+                  direction: DismissDirection.endToStart,
+                  background: Container(
+                    alignment: Alignment.centerRight,
+                    padding: const EdgeInsets.only(right: 20),
+                    color: Colors.redAccent.withOpacity(0.15),
+                    child: const Icon(Icons.delete_rounded, color: Colors.redAccent),
                   ),
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(o.icon, color: accent, size: 18),
-                      const SizedBox(height: 6),
-                      Text(o.label,
-                          style: TextStyle(color: accent, fontSize: 13, fontWeight: FontWeight.bold)),
-                    ],
+                  onDismissed: (_) {
+                    widget.onDelete(s.id);
+                    setState(() {});
+                  },
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              // Giờ lớn giống báo thức iOS
+                              Text(s.timeLabel,
+                                  style: TextStyle(
+                                      color: s.enabled ? Colors.white : AppColors.textSecondary,
+                                      fontSize: 36, fontWeight: FontWeight.w300,
+                                      letterSpacing: -1)),
+                              const SizedBox(height: 2),
+                              Row(
+                                children: [
+                                  Icon(
+                                    s.turnOn ? Icons.power_rounded : Icons.power_off_rounded,
+                                    color: s.enabled
+                                        ? (s.turnOn ? AppColors.accentLight : Colors.blueGrey.shade300)
+                                        : AppColors.textDim,
+                                    size: 13,
+                                  ),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    s.turnOn ? 'Hẹn bật' : 'Hẹn tắt',
+                                    style: TextStyle(
+                                        color: s.enabled ? AppColors.textSecondary : AppColors.textDim,
+                                        fontSize: 12),
+                                  ),
+                                  if (s.enabled) ...[
+                                    const SizedBox(width: 6),
+                                    Text('· ${_formatRemaining(s.remaining)}',
+                                        style: TextStyle(
+                                            color: s.turnOn ? AppColors.accentLight : Colors.blueGrey.shade300,
+                                            fontSize: 12, fontWeight: FontWeight.bold)),
+                                  ],
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                        Switch(
+                          value: s.enabled,
+                          onChanged: (val) {
+                            widget.onToggle(s.id, val);
+                            setState(() => s.enabled = val);
+                          },
+                          activeColor: AppColors.accentLight,
+                          activeTrackColor: AppColors.accentDim,
+                          inactiveThumbColor: Colors.white30,
+                          inactiveTrackColor: Colors.white10,
+                        ),
+                      ],
+                    ),
                   ),
                 ),
-              ),
-            )).toList(),
-          ),
-        ],
+                if (i < widget.schedules.length - 1)
+                  const Divider(height: 1, color: Colors.white10, indent: 18),
+              ],
+            );
+          }).toList(),
+        ),
       ),
     );
   }
 
-  // ── Countdown tab ──
+  // ── Tab Đếm ngược ──
   Widget _buildCountdownTab(Color accent, Color dim) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 24),
       child: Column(
         children: [
+          // Toggle hẹn tắt / hẹn bật
+          Container(
+            padding: const EdgeInsets.all(4),
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.06),
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Row(
+              children: [
+                _modeBtn('Hẹn tắt', Icons.power_off_rounded, !_turnOn,
+                    Colors.blueGrey.shade300, () => setState(() => _turnOn = false)),
+                _modeBtn('Hẹn bật', Icons.power_rounded, _turnOn,
+                    AppColors.accentLight, () => setState(() => _turnOn = true)),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
           Container(
             padding: const EdgeInsets.all(24),
             decoration: BoxDecoration(
@@ -633,14 +837,18 @@ class _TimerPickerSheetState extends State<_TimerPickerSheet> {
             label: '${_turnOn ? 'Bật' : 'Tắt'} sau ${_cdHour}h ${_cdMin.toString().padLeft(2,'0')}m',
             enabled: _cdHour > 0 || _cdMin > 0,
             accent: accent, dim: dim,
-            onTap: () => _confirm(Duration(hours: _cdHour, minutes: _cdMin)),
+            onTap: () {
+              final now = DateTime.now();
+              final target = now.add(Duration(hours: _cdHour, minutes: _cdMin));
+              widget.onAdd(target.hour, target.minute, _turnOn);
+            },
           ),
         ],
       ),
     );
   }
 
-  // ── Target time tab ──
+  // ── Tab Giờ cụ thể ──
   Widget _buildTargetTimeTab(Color accent, Color dim) {
     final dur = _durationUntil(_targetHour, _targetMin);
     final durText = dur.inHours > 0
@@ -652,6 +860,23 @@ class _TimerPickerSheetState extends State<_TimerPickerSheet> {
       padding: const EdgeInsets.symmetric(horizontal: 24),
       child: Column(
         children: [
+          // Toggle hẹn tắt / hẹn bật
+          Container(
+            padding: const EdgeInsets.all(4),
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.06),
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Row(
+              children: [
+                _modeBtn('Hẹn tắt', Icons.power_off_rounded, !_turnOn,
+                    Colors.blueGrey.shade300, () => setState(() => _turnOn = false)),
+                _modeBtn('Hẹn bật', Icons.power_rounded, _turnOn,
+                    AppColors.accentLight, () => setState(() => _turnOn = true)),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
           Container(
             padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
             decoration: BoxDecoration(
@@ -670,7 +895,6 @@ class _TimerPickerSheetState extends State<_TimerPickerSheet> {
             ),
           ),
           const SizedBox(height: 12),
-          // Info chip
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
@@ -689,7 +913,7 @@ class _TimerPickerSheetState extends State<_TimerPickerSheet> {
             label: '${_turnOn ? 'Bật' : 'Tắt'} lúc ${_targetHour.toString().padLeft(2,'0')}:${_targetMin.toString().padLeft(2,'0')}',
             enabled: true,
             accent: accent, dim: dim,
-            onTap: () => _confirm(dur),
+            onTap: () => widget.onAdd(_targetHour, _targetMin, _turnOn),
           ),
         ],
       ),
@@ -738,11 +962,7 @@ class _TimerPickerSheetState extends State<_TimerPickerSheet> {
               childCount: count,
               builder: (ctx, i) => Center(
                 child: Text(i.toString().padLeft(2, '0'),
-                    style: TextStyle(
-                      color: accent,
-                      fontSize: 32,
-                      fontWeight: FontWeight.bold,
-                    )),
+                    style: TextStyle(color: accent, fontSize: 32, fontWeight: FontWeight.bold)),
               ),
             ),
           ),

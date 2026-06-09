@@ -31,11 +31,16 @@ class SmartHomeApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'Smart Home',
-      debugShowCheckedModeBanner: false,
-      theme: AppTheme.dark,
-      home: const _AuthGate(),
+    return ValueListenableBuilder<ThemeMode>(
+      valueListenable: ThemeNotifier.instance,
+      builder: (_, mode, __) => MaterialApp(
+        title: 'Smart Home',
+        debugShowCheckedModeBanner: false,
+        theme: AppTheme.light,
+        darkTheme: AppTheme.dark,
+        themeMode: mode,
+        home: const _AuthGate(),
+      ),
     );
   }
 }

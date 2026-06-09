@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 import '../../../core/theme/app_theme.dart';
+// ThemeNotifier dùng để toggle dark/light mode
 import '../../../core/services/database_helper.dart';
 import '../../../core/services/mqtt_service.dart';
 import '../../../core/services/auth_service.dart';
+import '../../../core/services/avatar_service.dart';
+import '../../../core/services/device_config_service.dart';
 import '../lights/living_room_light_screen.dart';
 import '../members/members_screen.dart';
 
@@ -138,8 +141,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ),
             ]),
             const SizedBox(height: 20),
+            _sectionTitle('Cấu hình mạng'),
+            const SizedBox(height: 12),
+            _buildCameraUrlTile(),
+            const SizedBox(height: 20),
             _sectionTitle('Ứng dụng'),
             const SizedBox(height: 12),
+            _buildThemeTile(),
+            const SizedBox(height: 8),
             _buildInfoCard([
               _InfoTile(icon: Icons.info_outline_rounded, label: 'Phiên bản', value: '1.0.0', color: AppColors.textSecondary),
               _InfoTile(icon: Icons.code_rounded, label: 'Nền tảng', value: 'Flutter + ESP32', color: AppColors.textSecondary),
@@ -158,20 +167,53 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final auth = AuthService.instance;
     return Row(
       children: [
-        Container(
-          width: 64, height: 64,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            color: AppColors.accentDim,
-            border: Border.all(color: AppColors.accentLight.withOpacity(0.4), width: 2),
-          ),
-          child: Center(
-            child: Text(
-              auth.userName.isNotEmpty ? auth.userName[0].toUpperCase() : '?',
-              style: const TextStyle(color: AppColors.accentLight,
-                  fontSize: 26, fontWeight: FontWeight.bold),
-            ),
-          ),
+        ValueListenableBuilder<String?>(
+          valueListenable: AvatarService.instance,
+          builder: (_, path, __) {
+            final img = AvatarService.instance.imageProvider;
+            return GestureDetector(
+              onTap: () async {
+                await AvatarService.instance.pickFromGallery();
+              },
+              child: Stack(
+                children: [
+                  Container(
+                    width: 64, height: 64,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: AppColors.accentDim,
+                      border: Border.all(color: AppColors.accentLight.withOpacity(0.4), width: 2),
+                      image: img != null
+                          ? DecorationImage(image: img, fit: BoxFit.cover)
+                          : null,
+                    ),
+                    child: img == null
+                        ? Center(
+                            child: Text(
+                              auth.userName.isNotEmpty ? auth.userName[0].toUpperCase() : '?',
+                              style: const TextStyle(color: AppColors.accentLight,
+                                  fontSize: 26, fontWeight: FontWeight.bold),
+                            ),
+                          )
+                        : null,
+                  ),
+                  // Icon camera nhỏ góc dưới phải
+                  Positioned(
+                    bottom: 0, right: 0,
+                    child: Container(
+                      width: 20, height: 20,
+                      decoration: BoxDecoration(
+                        color: AppColors.accent,
+                        shape: BoxShape.circle,
+                        border: Border.all(color: AppColors.bg, width: 1.5),
+                      ),
+                      child: const Icon(Icons.camera_alt_rounded, size: 11, color: Colors.white),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
         ),
         const SizedBox(width: 16),
         Expanded(
@@ -483,6 +525,213 @@ class _ProfileScreenState extends State<ProfileScreen> {
         contentPadding:
             const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       ),
+    );
+  }
+
+  Widget _buildCameraUrlTile() {
+    final cfg = DeviceConfigService.instance;
+    final hasUrl = cfg.hasEsp32Ip;
+    return Container(
+      decoration: BoxDecoration(
+        color: AppColors.card,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: Colors.white.withOpacity(0.07)),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  width: 36, height: 36,
+                  decoration: BoxDecoration(
+                    color: AppColors.cameraColor.withOpacity(0.12),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Icon(Icons.videocam_rounded, color: AppColors.cameraColor, size: 18),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text('URL Camera', style: TextStyle(color: Colors.white, fontSize: 14)),
+                      Text(
+                        hasUrl ? '${cfg.esp32Ip}:${cfg.esp32Port}' : 'Tự động (cùng mạng WiFi)',
+                        style: TextStyle(
+                          color: hasUrl ? AppColors.cameraColor : AppColors.textSecondary,
+                          fontSize: 11,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                GestureDetector(
+                  onTap: _showCameraUrlDialog,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: AppColors.cameraColor.withOpacity(0.12),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: AppColors.cameraColor.withOpacity(0.3)),
+                    ),
+                    child: const Text('Sửa', style: TextStyle(color: AppColors.cameraColor, fontSize: 12, fontWeight: FontWeight.bold)),
+                  ),
+                ),
+              ],
+            ),
+            if (hasUrl) ...[
+              const SizedBox(height: 10),
+              GestureDetector(
+                onTap: () async {
+                  await cfg.saveEsp32Ip('', port: 81);
+                  setState(() {});
+                  if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Đã xoá — dùng mDNS tự động')));
+                },
+                child: Row(
+                  children: [
+                    const Icon(Icons.refresh_rounded, color: AppColors.textDim, size: 14),
+                    const SizedBox(width: 6),
+                    const Text('Xoá để dùng tự động (cùng mạng)',
+                        style: TextStyle(color: AppColors.textDim, fontSize: 11)),
+                  ],
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showCameraUrlDialog() {
+    final cfg = DeviceConfigService.instance;
+    final ctrl = TextEditingController(
+      text: cfg.hasEsp32Ip ? '${cfg.esp32Ip}:${cfg.esp32Port}' : '',
+    );
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.card,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text('URL Camera', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('Nhập IP local hoặc URL Ngrok:',
+                style: TextStyle(color: AppColors.textSecondary, fontSize: 12)),
+            const SizedBox(height: 4),
+            const Text('VD: 192.168.1.100:81\nVD: abc123.ngrok.io',
+                style: TextStyle(color: AppColors.textDim, fontSize: 11)),
+            const SizedBox(height: 12),
+            TextField(
+              controller: ctrl,
+              style: const TextStyle(color: Colors.white),
+              decoration: InputDecoration(
+                hintText: 'IP:port hoặc URL ngrok',
+                hintStyle: const TextStyle(color: AppColors.textDim),
+                filled: true,
+                fillColor: AppColors.cardElevated,
+                border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide.none),
+                prefixIcon: const Icon(Icons.link_rounded, color: AppColors.cameraColor, size: 18),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Huỷ', style: TextStyle(color: AppColors.textSecondary)),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              final input = ctrl.text.trim();
+              if (input.isEmpty) {
+                Navigator.pop(ctx);
+                return;
+              }
+              // Parse IP:port hoặc URL ngrok
+              String ip; int port = 81;
+              if (input.contains(':') && !input.startsWith('http')) {
+                final parts = input.split(':');
+                ip = parts[0];
+                port = int.tryParse(parts[1]) ?? 81;
+              } else {
+                ip = input.replaceAll(RegExp(r'https?://'), '');
+                port = 80;
+              }
+              await cfg.saveEsp32Ip(ip, port: port);
+              if (!mounted) return;
+              Navigator.pop(ctx);
+              setState(() {});
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text('Đã lưu: $ip:$port'),
+                    backgroundColor: AppColors.success));
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.cameraColor.withOpacity(0.2),
+              foregroundColor: AppColors.cameraColor,
+              elevation: 0,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            ),
+            child: const Text('Lưu'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildThemeTile() {
+    return ValueListenableBuilder<ThemeMode>(
+      valueListenable: ThemeNotifier.instance,
+      builder: (_, mode, __) {
+        final isDark = mode == ThemeMode.dark;
+        return Container(
+          decoration: BoxDecoration(
+            color: AppColors.card,
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: Colors.white.withOpacity(0.07)),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+            child: Row(
+              children: [
+                Container(
+                  width: 36, height: 36,
+                  decoration: BoxDecoration(
+                    color: (isDark ? Colors.indigo : Colors.orange).withOpacity(0.15),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Icon(
+                    isDark ? Icons.dark_mode_rounded : Icons.light_mode_rounded,
+                    color: isDark ? Colors.indigo.shade200 : Colors.orange,
+                    size: 18,
+                  ),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Text(isDark ? 'Giao diện tối' : 'Giao diện sáng',
+                      style: const TextStyle(color: Colors.white, fontSize: 14)),
+                ),
+                Switch(
+                  value: isDark,
+                  onChanged: (_) => ThemeNotifier.instance.toggle(),
+                  activeColor: Colors.indigo.shade200,
+                  activeTrackColor: Colors.indigo.withOpacity(0.3),
+                  inactiveThumbColor: Colors.orange,
+                  inactiveTrackColor: Colors.orange.withOpacity(0.2),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 
