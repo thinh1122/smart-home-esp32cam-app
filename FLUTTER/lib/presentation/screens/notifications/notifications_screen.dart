@@ -42,14 +42,15 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   Widget build(BuildContext context) {
     final items = _svc.items;
 
+    final ac = AC.of(context);
     return Scaffold(
-      backgroundColor: AppColors.bg,
+      backgroundColor: ac.bg,
       body: SafeArea(
         child: Column(
           children: [
-            _buildHeader(items),
+            _buildHeader(ac, items),
             Expanded(
-              child: items.isEmpty ? _buildEmpty() : _buildList(items),
+              child: items.isEmpty ? _buildEmpty(ac) : _buildList(ac, items),
             ),
           ],
         ),
@@ -57,7 +58,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     );
   }
 
-  Widget _buildHeader(List<AppNotification> items) {
+  Widget _buildHeader(AC ac, List<AppNotification> items) {
     final canPop = Navigator.canPop(context);
     return Padding(
       padding: EdgeInsets.fromLTRB(canPop ? 4 : 20, 20, 12, 12),
@@ -66,19 +67,17 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
           if (canPop)
             IconButton(
               onPressed: () => Navigator.pop(context),
-              icon: const Icon(Icons.arrow_back_ios_rounded,
-                  color: Colors.white70, size: 20),
+              icon: Icon(Icons.arrow_back_ios_rounded, color: ac.textSecondary, size: 20),
             ),
-          const Expanded(
+          Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text('Thông báo',
-                    style: TextStyle(color: Colors.white, fontSize: 22,
-                        fontWeight: FontWeight.bold)),
-                SizedBox(height: 2),
+                    style: TextStyle(color: ac.textPrimary, fontSize: 22, fontWeight: FontWeight.bold)),
+                const SizedBox(height: 2),
                 Text('Nhận diện & cảnh báo hệ thống',
-                    style: TextStyle(color: AppColors.textSecondary, fontSize: 13)),
+                    style: TextStyle(color: ac.textSecondary, fontSize: 13)),
               ],
             ),
           ),
@@ -94,7 +93,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     );
   }
 
-  Widget _buildEmpty() {
+  Widget _buildEmpty(AC ac) {
     return Center(
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -102,27 +101,24 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
           Container(
             padding: const EdgeInsets.all(24),
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.05),
+              color: ac.border,
               shape: BoxShape.circle,
             ),
-            child: const Icon(Icons.notifications_none_rounded,
-                color: Colors.white24, size: 52),
+            child: Icon(Icons.notifications_none_rounded, color: ac.iconFaint, size: 52),
           ),
           const SizedBox(height: 20),
-          const Text('Chưa có thông báo',
-              style: TextStyle(color: Colors.white54, fontSize: 16,
-                  fontWeight: FontWeight.w600)),
+          Text('Chưa có thông báo',
+              style: TextStyle(color: ac.textSecondary, fontSize: 16, fontWeight: FontWeight.w600)),
           const SizedBox(height: 8),
-          const Text('Thông báo nhận diện và cảnh báo\nsẽ hiện ở đây',
+          Text('Thông báo nhận diện và cảnh báo\nsẽ hiện ở đây',
               textAlign: TextAlign.center,
-              style: TextStyle(color: AppColors.textDim, fontSize: 13)),
+              style: TextStyle(color: ac.textDim, fontSize: 13)),
         ],
       ),
     );
   }
 
-  Widget _buildList(List<AppNotification> items) {
-    // Nhóm theo ngày
+  Widget _buildList(AC ac, List<AppNotification> items) {
     final Map<String, List<AppNotification>> grouped = {};
     for (final n in items) {
       final now  = DateTime.now();
@@ -140,19 +136,19 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
           Padding(
             padding: const EdgeInsets.fromLTRB(4, 12, 0, 8),
             child: Text(entry.key,
-                style: const TextStyle(color: Colors.white38, fontSize: 12,
+                style: TextStyle(color: ac.textDim, fontSize: 12,
                     fontWeight: FontWeight.bold, letterSpacing: 0.5)),
           ),
-          ...entry.value.map((n) => _buildCard(n)),
+          ...entry.value.map((n) => _buildCard(ac, n)),
         ],
         const SizedBox(height: 24),
       ],
     );
   }
 
-  Widget _buildCard(AppNotification n) {
+  Widget _buildCard(AC ac, AppNotification n) {
     final isAlert = n.isAlert;
-    final color   = isAlert ? Colors.redAccent : AppColors.accentLight;
+    final color   = isAlert ? Colors.redAccent : ac.accentLight;
     final icon    = isAlert
         ? Icons.warning_amber_rounded
         : Icons.face_retouching_natural_rounded;
@@ -162,14 +158,10 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       child: Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: isAlert
-              ? Colors.red.withOpacity(0.08)
-              : Colors.white.withOpacity(0.04),
+          color: isAlert ? Colors.red.withOpacity(0.08) : ac.card,
           borderRadius: BorderRadius.circular(16),
           border: Border.all(
-            color: isAlert
-                ? Colors.redAccent.withOpacity(0.3)
-                : Colors.white.withOpacity(0.08),
+            color: isAlert ? Colors.redAccent.withOpacity(0.3) : ac.border,
           ),
         ),
         child: Row(
@@ -190,21 +182,16 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                 children: [
                   Text(n.title,
                       style: TextStyle(
-                          color: isAlert ? Colors.redAccent : Colors.white,
+                          color: isAlert ? Colors.redAccent : ac.textPrimary,
                           fontSize: 14, fontWeight: FontWeight.bold)),
                   const SizedBox(height: 4),
-                  Text(n.body,
-                      style: const TextStyle(
-                          color: AppColors.textSecondary, fontSize: 13)),
+                  Text(n.body, style: TextStyle(color: ac.textSecondary, fontSize: 13)),
                   const SizedBox(height: 6),
                   Row(
                     children: [
-                      Icon(Icons.access_time_rounded,
-                          color: AppColors.textDim, size: 11),
+                      Icon(Icons.access_time_rounded, color: ac.textDim, size: 11),
                       const SizedBox(width: 4),
-                      Text(_formatTime(n.time),
-                          style: const TextStyle(
-                              color: AppColors.textDim, fontSize: 11)),
+                      Text(_formatTime(n.time), style: TextStyle(color: ac.textDim, fontSize: 11)),
                     ],
                   ),
                 ],

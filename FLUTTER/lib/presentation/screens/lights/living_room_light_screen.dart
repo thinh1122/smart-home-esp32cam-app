@@ -146,9 +146,10 @@ class _LivingRoomLightScreenState extends State<LivingRoomLightScreen> {
   }
 
   void _showTimerPicker() {
+    final ac = AC.of(context);
     showModalBottomSheet(
       context: context,
-      backgroundColor: AppColors.card,
+      backgroundColor: ac.card,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
@@ -181,26 +182,27 @@ class _LivingRoomLightScreenState extends State<LivingRoomLightScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final ac = AC.of(context);
     return Scaffold(
-      backgroundColor: AppColors.bg,
+      backgroundColor: ac.bg,
       body: SafeArea(
         child: CustomScrollView(
           slivers: [
-            SliverToBoxAdapter(child: _buildHeader()),
-            SliverToBoxAdapter(child: const SizedBox(height: 28)),
-            SliverToBoxAdapter(child: _buildBrightnessCard()),
+            SliverToBoxAdapter(child: _buildHeader(ac)),
+            const SliverToBoxAdapter(child: SizedBox(height: 28)),
+            SliverToBoxAdapter(child: _buildBrightnessCard(ac)),
             if (_schedules.isNotEmpty) ...[
-              SliverToBoxAdapter(child: const SizedBox(height: 20)),
-              SliverToBoxAdapter(child: _buildScheduleList()),
+              const SliverToBoxAdapter(child: SizedBox(height: 20)),
+              SliverToBoxAdapter(child: _buildScheduleList(ac)),
             ],
-            SliverToBoxAdapter(child: const SizedBox(height: 32)),
+            const SliverToBoxAdapter(child: SizedBox(height: 32)),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildHeader() {
+  Widget _buildHeader(AC ac) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
       child: Row(
@@ -210,16 +212,16 @@ class _LivingRoomLightScreenState extends State<LivingRoomLightScreen> {
             children: [
               if (Navigator.canPop(context))
                 IconButton(
-                  icon: const Icon(Icons.arrow_back_ios_rounded, color: Colors.white70),
+                  icon: Icon(Icons.arrow_back_ios_rounded, color: ac.textSecondary),
                   onPressed: () => Navigator.pop(context),
                 ),
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(_roomLabel(widget.room),
-                      style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold)),
+                      style: TextStyle(color: ac.textPrimary, fontSize: 22, fontWeight: FontWeight.bold)),
                   Text('Điều khiển đèn · ${widget.room}',
-                      style: const TextStyle(color: AppColors.textSecondary, fontSize: 12)),
+                      style: TextStyle(color: ac.textSecondary, fontSize: 12)),
                 ],
               ),
             ],
@@ -229,22 +231,22 @@ class _LivingRoomLightScreenState extends State<LivingRoomLightScreen> {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                 decoration: BoxDecoration(
-                  color: _isOn ? AppColors.accentDim : AppColors.card,
+                  color: _isOn ? ac.accentDim : ac.card,
                   borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: _isOn ? AppColors.accentLight.withOpacity(0.4) : Colors.white10),
+                  border: Border.all(color: _isOn ? ac.accentLight.withOpacity(0.4) : ac.border),
                 ),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Container(width: 8, height: 8,
                       decoration: BoxDecoration(
-                          color: _isOn ? AppColors.success : AppColors.textDim,
+                          color: _isOn ? ac.success : ac.textDim,
                           shape: BoxShape.circle),
                     ),
                     const SizedBox(width: 8),
                     Text(_isOn ? 'ON' : 'OFF',
                       style: TextStyle(
-                          color: _isOn ? AppColors.accentLight : AppColors.textSecondary,
+                          color: _isOn ? ac.accentLight : ac.textSecondary,
                           fontSize: 12, fontWeight: FontWeight.bold),
                     ),
                   ],
@@ -254,10 +256,10 @@ class _LivingRoomLightScreenState extends State<LivingRoomLightScreen> {
               Switch(
                 value: _isOn,
                 onChanged: _toggleLight,
-                activeColor: AppColors.accentLight,
-                activeTrackColor: AppColors.accentDim,
-                inactiveThumbColor: Colors.white30,
-                inactiveTrackColor: Colors.white10,
+                activeColor: ac.accentLight,
+                activeTrackColor: ac.accentDim,
+                inactiveThumbColor: ac.iconMuted,
+                inactiveTrackColor: ac.border,
               ),
             ],
           ),
@@ -266,15 +268,15 @@ class _LivingRoomLightScreenState extends State<LivingRoomLightScreen> {
     );
   }
 
-  Widget _buildBrightnessCard() {
+  Widget _buildBrightnessCard(AC ac) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20),
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 32, horizontal: 24),
         decoration: BoxDecoration(
-          color: AppColors.card,
+          color: ac.card,
           borderRadius: BorderRadius.circular(32),
-          border: Border.all(color: Colors.white.withOpacity(0.06)),
+          border: Border.all(color: ac.border),
         ),
         child: Column(
           children: [
@@ -297,7 +299,7 @@ class _LivingRoomLightScreenState extends State<LivingRoomLightScreen> {
                     child: CustomPaint(
                       painter: BrightnessRingPainter(
                         percentage: _isOn ? _brightness : 0,
-                        accentColor: _isOn ? AppColors.accentLight : Colors.white24,
+                        accentColor: _isOn ? ac.accentLight : ac.iconFaint,
                       ),
                     ),
                   ),
@@ -306,14 +308,14 @@ class _LivingRoomLightScreenState extends State<LivingRoomLightScreen> {
                     children: [
                       Text('BRIGHTNESS',
                         style: TextStyle(
-                            color: _isOn ? AppColors.textSecondary : AppColors.textDim,
+                            color: _isOn ? ac.textSecondary : ac.textDim,
                             fontSize: 11, letterSpacing: 2, fontWeight: FontWeight.w600),
                       ),
                       const SizedBox(height: 4),
                       Text(
                         _isOn ? '${(_brightness * 100).round()}%' : 'OFF',
                         style: TextStyle(
-                          color: _isOn ? Colors.white : AppColors.textSecondary,
+                          color: _isOn ? ac.textPrimary : ac.textSecondary,
                           fontSize: 52, fontWeight: FontWeight.bold,
                         ),
                       ),
@@ -322,12 +324,12 @@ class _LivingRoomLightScreenState extends State<LivingRoomLightScreen> {
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           Icon(Icons.wb_sunny_rounded,
-                              color: _isOn ? AppColors.lightColor : Colors.white24, size: 15),
+                              color: _isOn ? ac.lightColor : ac.iconFaint, size: 15),
                           const SizedBox(width: 6),
                           Text(
                             _isOn ? 'Đang bật' : 'Đang tắt',
                             style: TextStyle(
-                                color: _isOn ? AppColors.lightColor : AppColors.textDim,
+                                color: _isOn ? ac.lightColor : ac.textDim,
                                 fontSize: 13, fontWeight: FontWeight.w600),
                           ),
                         ],
@@ -340,12 +342,12 @@ class _LivingRoomLightScreenState extends State<LivingRoomLightScreen> {
             const SizedBox(height: 32),
             Row(
               children: [
-                Expanded(child: _ctrlBtn(
+                Expanded(child: _ctrlBtn(ac,
                   Icons.power_settings_new_rounded, 'BẬT/TẮT', !_isOn,
                   () => _toggleLight(!_isOn),
                 )),
                 const SizedBox(width: 14),
-                Expanded(child: _ctrlBtn(
+                Expanded(child: _ctrlBtn(ac,
                   Icons.timer_rounded, 'HẸN GIỜ',
                   _schedules.any((s) => s.enabled),
                   _showTimerPicker,
@@ -358,7 +360,7 @@ class _LivingRoomLightScreenState extends State<LivingRoomLightScreen> {
     );
   }
 
-  Widget _buildScheduleList() {
+  Widget _buildScheduleList(AC ac) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20),
       child: Column(
@@ -369,19 +371,18 @@ class _LivingRoomLightScreenState extends State<LivingRoomLightScreen> {
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Text('Hẹn giờ',
-                    style: TextStyle(color: Colors.white70, fontSize: 13,
-                        fontWeight: FontWeight.bold, letterSpacing: 0.5)),
+                Text('Hẹn giờ', style: TextStyle(color: ac.textSecondary, fontSize: 13,
+                    fontWeight: FontWeight.bold, letterSpacing: 0.5)),
                 Text('${_schedules.where((s) => s.enabled).length} đang bật',
-                    style: const TextStyle(color: AppColors.textSecondary, fontSize: 12)),
+                    style: TextStyle(color: ac.textSecondary, fontSize: 12)),
               ],
             ),
           ),
           Container(
             decoration: BoxDecoration(
-              color: AppColors.card,
+              color: ac.card,
               borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: Colors.white.withOpacity(0.07)),
+              border: Border.all(color: ac.border),
             ),
             child: Column(
               children: _schedules.asMap().entries.map((e) {
@@ -408,14 +409,13 @@ class _LivingRoomLightScreenState extends State<LivingRoomLightScreen> {
                         padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
                         child: Row(
                           children: [
-                            // Giờ lớn như báo thức iOS
                             Expanded(
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Text(s.timeLabel,
                                       style: TextStyle(
-                                          color: s.enabled ? Colors.white : AppColors.textSecondary,
+                                          color: s.enabled ? ac.textPrimary : ac.textSecondary,
                                           fontSize: 34, fontWeight: FontWeight.w300,
                                           letterSpacing: -1)),
                                   const SizedBox(height: 2),
@@ -424,22 +424,22 @@ class _LivingRoomLightScreenState extends State<LivingRoomLightScreen> {
                                       Icon(
                                         s.turnOn ? Icons.power_rounded : Icons.power_off_rounded,
                                         color: s.enabled
-                                            ? (s.turnOn ? AppColors.accentLight : Colors.blueGrey.shade300)
-                                            : AppColors.textDim,
+                                            ? (s.turnOn ? ac.accentLight : Colors.blueGrey.shade300)
+                                            : ac.textDim,
                                         size: 13,
                                       ),
                                       const SizedBox(width: 4),
                                       Text(
                                         s.turnOn ? 'Hẹn bật' : 'Hẹn tắt',
                                         style: TextStyle(
-                                            color: s.enabled ? AppColors.textSecondary : AppColors.textDim,
+                                            color: s.enabled ? ac.textSecondary : ac.textDim,
                                             fontSize: 12),
                                       ),
                                       if (s.enabled) ...[
                                         const SizedBox(width: 8),
                                         Text('· ${_formatRemaining(s.remaining)}',
                                             style: TextStyle(
-                                                color: s.turnOn ? AppColors.accentLight : Colors.blueGrey.shade300,
+                                                color: s.turnOn ? ac.accentLight : Colors.blueGrey.shade300,
                                                 fontSize: 12, fontWeight: FontWeight.bold)),
                                       ],
                                     ],
@@ -450,31 +450,30 @@ class _LivingRoomLightScreenState extends State<LivingRoomLightScreen> {
                             Switch(
                               value: s.enabled,
                               onChanged: (val) => _toggleSchedule(s, val),
-                              activeColor: AppColors.accentLight,
-                              activeTrackColor: AppColors.accentDim,
-                              inactiveThumbColor: Colors.white30,
-                              inactiveTrackColor: Colors.white10,
+                              activeColor: ac.accentLight,
+                              activeTrackColor: ac.accentDim,
+                              inactiveThumbColor: ac.iconMuted,
+                              inactiveTrackColor: ac.border,
                             ),
                           ],
                         ),
                       ),
                     ),
                     if (i < _schedules.length - 1)
-                      const Divider(height: 1, color: Colors.white10, indent: 18),
+                      Divider(height: 1, color: ac.divider, indent: 18),
                   ],
                 );
               }).toList(),
             ),
           ),
           const SizedBox(height: 8),
-          const Text('Vuốt sang trái để xoá',
-              style: TextStyle(color: AppColors.textDim, fontSize: 11)),
+          Text('Vuốt sang trái để xoá', style: TextStyle(color: ac.textDim, fontSize: 11)),
         ],
       ),
     );
   }
 
-  Widget _ctrlBtn(IconData icon, String label, bool isActive, VoidCallback? onTap) {
+  Widget _ctrlBtn(AC ac, IconData icon, String label, bool isActive, VoidCallback? onTap) {
     return GestureDetector(
       onTap: onTap,
       child: Opacity(
@@ -482,19 +481,19 @@ class _LivingRoomLightScreenState extends State<LivingRoomLightScreen> {
         child: Container(
           padding: const EdgeInsets.symmetric(vertical: 22),
           decoration: BoxDecoration(
-            color: isActive ? AppColors.accentDim : Colors.white.withOpacity(0.04),
+            color: isActive ? ac.accentDim : ac.border,
             borderRadius: BorderRadius.circular(36),
             border: Border.all(
-                color: isActive ? AppColors.accentLight.withOpacity(0.3) : Colors.white12),
+                color: isActive ? ac.accentLight.withOpacity(0.3) : ac.divider),
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(icon, color: isActive ? AppColors.accentLight : Colors.white54, size: 26),
+              Icon(icon, color: isActive ? ac.accentLight : ac.textSecondary, size: 26),
               const SizedBox(height: 10),
               Text(label,
                   style: TextStyle(
-                      color: isActive ? AppColors.accentLight : Colors.white38,
+                      color: isActive ? ac.accentLight : ac.textSecondary,
                       fontSize: 10, fontWeight: FontWeight.bold, letterSpacing: 0.5)),
             ],
           ),
@@ -582,8 +581,9 @@ class _TimerPickerSheetState extends State<_TimerPickerSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final accentColor = _turnOn ? AppColors.accentLight : Colors.blueGrey.shade300;
-    final accentDim   = _turnOn ? AppColors.accentDim   : Colors.blueGrey.withOpacity(0.3);
+    final ac = AC.of(context);
+    final accentColor = _turnOn ? ac.accentLight : Colors.blueGrey.shade300;
+    final accentDim   = _turnOn ? ac.accentDim   : Colors.blueGrey.withOpacity(0.3);
 
     return Padding(
       padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
@@ -592,7 +592,7 @@ class _TimerPickerSheetState extends State<_TimerPickerSheet> {
         children: [
           const SizedBox(height: 12),
           Center(child: Container(width: 40, height: 4,
-              decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(2)))),
+              decoration: BoxDecoration(color: ac.iconFaint, borderRadius: BorderRadius.circular(2)))),
           const SizedBox(height: 16),
 
           // Header
@@ -611,22 +611,21 @@ class _TimerPickerSheetState extends State<_TimerPickerSheet> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(_turnOn ? 'Hẹn giờ bật đèn' : 'Hẹn giờ tắt đèn',
-                          style: const TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.bold)),
+                          style: TextStyle(color: ac.textPrimary, fontSize: 17, fontWeight: FontWeight.bold)),
                       Text(_turnOn ? 'Đèn tự bật đúng giờ bạn chọn' : 'Đèn tự tắt đúng giờ bạn chọn',
-                          style: const TextStyle(color: AppColors.textSecondary, fontSize: 12)),
+                          style: TextStyle(color: ac.textSecondary, fontSize: 12)),
                     ],
                   ),
                 ),
-                // Nút + thêm mới (chuyển sang tab đếm ngược)
                 GestureDetector(
                   onTap: () => setState(() => _tab = 2),
                   child: Container(
                     padding: const EdgeInsets.all(8),
                     decoration: BoxDecoration(
-                      color: AppColors.accentDim,
+                      color: ac.accentDim,
                       borderRadius: BorderRadius.circular(10),
                     ),
-                    child: const Icon(Icons.add_rounded, color: AppColors.accentLight, size: 20),
+                    child: Icon(Icons.add_rounded, color: ac.accentLight, size: 20),
                   ),
                 ),
               ],
@@ -640,7 +639,7 @@ class _TimerPickerSheetState extends State<_TimerPickerSheet> {
             child: Container(
               padding: const EdgeInsets.all(4),
               decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.05),
+                color: ac.border,
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Row(
@@ -671,6 +670,7 @@ class _TimerPickerSheetState extends State<_TimerPickerSheet> {
 
   // ── Tab Lịch sử (giống iOS Clock) ──
   Widget _buildHistoryTab() {
+    final ac = AC.of(context);
     if (widget.schedules.isEmpty) {
       return Padding(
         padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
@@ -678,19 +678,17 @@ class _TimerPickerSheetState extends State<_TimerPickerSheet> {
           width: double.infinity,
           padding: const EdgeInsets.all(28),
           decoration: BoxDecoration(
-            color: Colors.white.withOpacity(0.04),
+            color: ac.border,
             borderRadius: BorderRadius.circular(20),
           ),
           child: Column(
             children: [
-              const Icon(Icons.timer_off_rounded, color: Colors.white24, size: 36),
+              Icon(Icons.timer_off_rounded, color: ac.iconFaint, size: 36),
               const SizedBox(height: 10),
-              const Text('Chưa có hẹn giờ nào',
-                  style: TextStyle(color: AppColors.textSecondary, fontSize: 14)),
+              Text('Chưa có hẹn giờ nào', style: TextStyle(color: ac.textSecondary, fontSize: 14)),
               const SizedBox(height: 4),
-              const Text('Bấm + hoặc chọn tab "Đếm ngược" / "Giờ cụ thể" để thêm',
-                  style: TextStyle(color: AppColors.textDim, fontSize: 11),
-                  textAlign: TextAlign.center),
+              Text('Bấm + hoặc chọn tab "Đếm ngược" / "Giờ cụ thể" để thêm',
+                  style: TextStyle(color: ac.textDim, fontSize: 11), textAlign: TextAlign.center),
             ],
           ),
         ),
@@ -701,9 +699,9 @@ class _TimerPickerSheetState extends State<_TimerPickerSheet> {
       padding: const EdgeInsets.symmetric(horizontal: 24),
       child: Container(
         decoration: BoxDecoration(
-          color: AppColors.cardElevated,
+          color: ac.cardElevated,
           borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: Colors.white.withOpacity(0.07)),
+          border: Border.all(color: ac.border),
         ),
         child: Column(
           children: widget.schedules.asMap().entries.map((e) {
@@ -732,10 +730,9 @@ class _TimerPickerSheetState extends State<_TimerPickerSheet> {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              // Giờ lớn giống báo thức iOS
                               Text(s.timeLabel,
                                   style: TextStyle(
-                                      color: s.enabled ? Colors.white : AppColors.textSecondary,
+                                      color: s.enabled ? ac.textPrimary : ac.textSecondary,
                                       fontSize: 36, fontWeight: FontWeight.w300,
                                       letterSpacing: -1)),
                               const SizedBox(height: 2),
@@ -744,22 +741,22 @@ class _TimerPickerSheetState extends State<_TimerPickerSheet> {
                                   Icon(
                                     s.turnOn ? Icons.power_rounded : Icons.power_off_rounded,
                                     color: s.enabled
-                                        ? (s.turnOn ? AppColors.accentLight : Colors.blueGrey.shade300)
-                                        : AppColors.textDim,
+                                        ? (s.turnOn ? ac.accentLight : Colors.blueGrey.shade300)
+                                        : ac.textDim,
                                     size: 13,
                                   ),
                                   const SizedBox(width: 4),
                                   Text(
                                     s.turnOn ? 'Hẹn bật' : 'Hẹn tắt',
                                     style: TextStyle(
-                                        color: s.enabled ? AppColors.textSecondary : AppColors.textDim,
+                                        color: s.enabled ? ac.textSecondary : ac.textDim,
                                         fontSize: 12),
                                   ),
                                   if (s.enabled) ...[
                                     const SizedBox(width: 6),
                                     Text('· ${_formatRemaining(s.remaining)}',
                                         style: TextStyle(
-                                            color: s.turnOn ? AppColors.accentLight : Colors.blueGrey.shade300,
+                                            color: s.turnOn ? ac.accentLight : Colors.blueGrey.shade300,
                                             fontSize: 12, fontWeight: FontWeight.bold)),
                                   ],
                                 ],
@@ -773,17 +770,17 @@ class _TimerPickerSheetState extends State<_TimerPickerSheet> {
                             widget.onToggle(s.id, val);
                             setState(() => s.enabled = val);
                           },
-                          activeColor: AppColors.accentLight,
-                          activeTrackColor: AppColors.accentDim,
-                          inactiveThumbColor: Colors.white30,
-                          inactiveTrackColor: Colors.white10,
+                          activeColor: ac.accentLight,
+                          activeTrackColor: ac.accentDim,
+                          inactiveThumbColor: ac.iconMuted,
+                          inactiveTrackColor: ac.border,
                         ),
                       ],
                     ),
                   ),
                 ),
                 if (i < widget.schedules.length - 1)
-                  const Divider(height: 1, color: Colors.white10, indent: 18),
+                  Divider(height: 1, color: ac.divider, indent: 18),
               ],
             );
           }).toList(),
@@ -794,15 +791,15 @@ class _TimerPickerSheetState extends State<_TimerPickerSheet> {
 
   // ── Tab Đếm ngược ──
   Widget _buildCountdownTab(Color accent, Color dim) {
+    final ac = AC.of(context);
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 24),
       child: Column(
         children: [
-          // Toggle hẹn tắt / hẹn bật
           Container(
             padding: const EdgeInsets.all(4),
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.06),
+              color: ac.border,
               borderRadius: BorderRadius.circular(14),
             ),
             child: Row(
@@ -810,7 +807,7 @@ class _TimerPickerSheetState extends State<_TimerPickerSheet> {
                 _modeBtn('Hẹn tắt', Icons.power_off_rounded, !_turnOn,
                     Colors.blueGrey.shade300, () => setState(() => _turnOn = false)),
                 _modeBtn('Hẹn bật', Icons.power_rounded, _turnOn,
-                    AppColors.accentLight, () => setState(() => _turnOn = true)),
+                    ac.accentLight, () => setState(() => _turnOn = true)),
               ],
             ),
           ),
@@ -818,9 +815,9 @@ class _TimerPickerSheetState extends State<_TimerPickerSheet> {
           Container(
             padding: const EdgeInsets.all(24),
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.04),
+              color: ac.border,
               borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: Colors.white10),
+              border: Border.all(color: ac.divider),
             ),
             child: Row(
               children: [
@@ -850,6 +847,7 @@ class _TimerPickerSheetState extends State<_TimerPickerSheet> {
 
   // ── Tab Giờ cụ thể ──
   Widget _buildTargetTimeTab(Color accent, Color dim) {
+    final ac = AC.of(context);
     final dur = _durationUntil(_targetHour, _targetMin);
     final durText = dur.inHours > 0
         ? 'sau ${dur.inHours}h ${dur.inMinutes.remainder(60)}m'
@@ -860,11 +858,10 @@ class _TimerPickerSheetState extends State<_TimerPickerSheet> {
       padding: const EdgeInsets.symmetric(horizontal: 24),
       child: Column(
         children: [
-          // Toggle hẹn tắt / hẹn bật
           Container(
             padding: const EdgeInsets.all(4),
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.06),
+              color: ac.border,
               borderRadius: BorderRadius.circular(14),
             ),
             child: Row(
@@ -872,7 +869,7 @@ class _TimerPickerSheetState extends State<_TimerPickerSheet> {
                 _modeBtn('Hẹn tắt', Icons.power_off_rounded, !_turnOn,
                     Colors.blueGrey.shade300, () => setState(() => _turnOn = false)),
                 _modeBtn('Hẹn bật', Icons.power_rounded, _turnOn,
-                    AppColors.accentLight, () => setState(() => _turnOn = true)),
+                    ac.accentLight, () => setState(() => _turnOn = true)),
               ],
             ),
           ),
@@ -880,9 +877,9 @@ class _TimerPickerSheetState extends State<_TimerPickerSheet> {
           Container(
             padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.04),
+              color: ac.border,
               borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: Colors.white10),
+              border: Border.all(color: ac.divider),
             ),
             child: Row(
               children: [
@@ -921,9 +918,10 @@ class _TimerPickerSheetState extends State<_TimerPickerSheet> {
   }
 
   Widget _spinnerCol(String label, int value, int max, ValueChanged<int> onChange, Color accent) {
+    final ac = AC.of(context);
     return Column(
       children: [
-        Text(label, style: const TextStyle(color: AppColors.textSecondary, fontSize: 11, letterSpacing: 1)),
+        Text(label, style: TextStyle(color: ac.textSecondary, fontSize: 11, letterSpacing: 1)),
         const SizedBox(height: 12),
         Row(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -945,9 +943,10 @@ class _TimerPickerSheetState extends State<_TimerPickerSheet> {
   }
 
   Widget _wheelCol(String label, FixedExtentScrollController ctrl, int count, ValueChanged<int> onChange, Color accent) {
+    final ac = AC.of(context);
     return Column(
       children: [
-        Text(label, style: const TextStyle(color: AppColors.textSecondary, fontSize: 11, letterSpacing: 1)),
+        Text(label, style: TextStyle(color: ac.textSecondary, fontSize: 11, letterSpacing: 1)),
         const SizedBox(height: 4),
         SizedBox(
           height: 150,
@@ -972,6 +971,7 @@ class _TimerPickerSheetState extends State<_TimerPickerSheet> {
   }
 
   Widget _modeBtn(String label, IconData icon, bool active, Color color, VoidCallback onTap) {
+    final ac = AC.of(context);
     return Expanded(
       child: GestureDetector(
         onTap: onTap,
@@ -986,10 +986,10 @@ class _TimerPickerSheetState extends State<_TimerPickerSheet> {
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(icon, color: active ? color : Colors.white38, size: 16),
+              Icon(icon, color: active ? color : ac.iconMuted, size: 16),
               const SizedBox(width: 6),
               Text(label, style: TextStyle(
-                color: active ? color : Colors.white38,
+                color: active ? color : ac.iconMuted,
                 fontWeight: FontWeight.bold, fontSize: 13,
               )),
             ],
@@ -1000,6 +1000,7 @@ class _TimerPickerSheetState extends State<_TimerPickerSheet> {
   }
 
   Widget _tabBtn(String label, IconData icon, int idx, Color accent) {
+    final ac = AC.of(context);
     final active = _tab == idx;
     return Expanded(
       child: GestureDetector(
@@ -1014,10 +1015,10 @@ class _TimerPickerSheetState extends State<_TimerPickerSheet> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(icon, color: active ? accent : Colors.white38, size: 16),
+              Icon(icon, color: active ? accent : ac.iconMuted, size: 16),
               const SizedBox(height: 4),
               Text(label, style: TextStyle(
-                color: active ? accent : Colors.white38,
+                color: active ? accent : ac.iconMuted,
                 fontSize: 10, fontWeight: FontWeight.bold,
               )),
             ],
@@ -1034,6 +1035,7 @@ class _TimerPickerSheetState extends State<_TimerPickerSheet> {
     required Color dim,
     required VoidCallback onTap,
   }) {
+    final ac = AC.of(context);
     return SizedBox(
       width: double.infinity,
       child: ElevatedButton(
@@ -1041,8 +1043,8 @@ class _TimerPickerSheetState extends State<_TimerPickerSheet> {
         style: ElevatedButton.styleFrom(
           backgroundColor: accent.withOpacity(0.2),
           foregroundColor: accent,
-          disabledBackgroundColor: Colors.white10,
-          disabledForegroundColor: Colors.white30,
+          disabledBackgroundColor: ac.border,
+          disabledForegroundColor: ac.iconMuted,
           padding: const EdgeInsets.symmetric(vertical: 15),
           elevation: 0,
           shape: RoundedRectangleBorder(
@@ -1055,15 +1057,18 @@ class _TimerPickerSheetState extends State<_TimerPickerSheet> {
     );
   }
 
-  Widget _numBtn(IconData icon, VoidCallback onTap) => GestureDetector(
-    onTap: onTap,
-    child: Container(
-      width: 38, height: 38,
-      decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.08),
-        borderRadius: BorderRadius.circular(10),
+  Widget _numBtn(IconData icon, VoidCallback onTap) {
+    final ac = AC.of(context);
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: 38, height: 38,
+        decoration: BoxDecoration(
+          color: ac.border,
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: Icon(icon, color: ac.textSecondary, size: 18),
       ),
-      child: Icon(icon, color: Colors.white70, size: 18),
-    ),
-  );
+    );
+  }
 }

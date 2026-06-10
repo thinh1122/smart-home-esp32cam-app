@@ -25,7 +25,6 @@ class FaceEnrollScreen extends StatefulWidget {
 class _FaceEnrollScreenState extends State<FaceEnrollScreen> {
   final _picker = ImagePicker();
 
-  // 3 slot ảnh: chính diện, nghiêng phải, nghiêng trái
   final List<Uint8List?> _images = [null, null, null];
   final List<String?> _base64s = [null, null, null];
 
@@ -106,33 +105,33 @@ class _FaceEnrollScreenState extends State<FaceEnrollScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final ac = AC.of(context);
     return Scaffold(
-      backgroundColor: AppColors.bg,
+      backgroundColor: ac.bg,
       appBar: AppBar(
-        backgroundColor: AppColors.card,
+        backgroundColor: ac.card,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.white70, size: 20),
+          icon: Icon(Icons.arrow_back_ios_new_rounded, color: ac.textSecondary, size: 20),
           onPressed: () => Navigator.pop(context),
         ),
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('Đăng ký khuôn mặt',
-                style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
+            Text('Đăng ký khuôn mặt',
+                style: TextStyle(color: ac.textPrimary, fontSize: 16, fontWeight: FontWeight.bold)),
             Text(widget.memberName,
-                style: const TextStyle(color: AppColors.textSecondary, fontSize: 12)),
+                style: TextStyle(color: ac.textSecondary, fontSize: 12)),
           ],
         ),
       ),
-      body: _done ? _buildDoneView() : _buildPickView(),
+      body: _done ? _buildDoneView() : _buildPickView(ac),
     );
   }
 
-  Widget _buildPickView() {
+  Widget _buildPickView(AC ac) {
     return Column(
       children: [
-        // Progress indicator
         Padding(
           padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
           child: Row(
@@ -142,7 +141,7 @@ class _FaceEnrollScreenState extends State<FaceEnrollScreen> {
                 height: 4,
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(2),
-                  color: _images[i] != null ? AppColors.success : AppColors.surface,
+                  color: _images[i] != null ? AppColors.success : ac.cardElevated,
                 ),
               ),
             )),
@@ -156,10 +155,10 @@ class _FaceEnrollScreenState extends State<FaceEnrollScreen> {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text('$_filledCount/3 ảnh đã chọn',
-                  style: const TextStyle(color: AppColors.textSecondary, fontSize: 12)),
+                  style: TextStyle(color: ac.textSecondary, fontSize: 12)),
               Text(_filledCount == 3 ? 'Sẵn sàng đăng ký ✓' : 'Chọn đủ 3 ảnh',
                   style: TextStyle(
-                    color: _filledCount == 3 ? AppColors.success : AppColors.textSecondary,
+                    color: _filledCount == 3 ? AppColors.success : ac.textSecondary,
                     fontSize: 12, fontWeight: FontWeight.w600,
                   )),
             ],
@@ -168,17 +167,15 @@ class _FaceEnrollScreenState extends State<FaceEnrollScreen> {
 
         const SizedBox(height: 16),
 
-        // 3 ảnh slots
         Expanded(
           child: ListView.separated(
             padding: const EdgeInsets.symmetric(horizontal: 20),
             itemCount: 3,
             separatorBuilder: (_, __) => const SizedBox(height: 12),
-            itemBuilder: (_, i) => _buildImageSlot(i),
+            itemBuilder: (_, i) => _buildImageSlot(ac, i),
           ),
         ),
 
-        // Error
         if (_errorMsg != null)
           Padding(
             padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
@@ -200,7 +197,6 @@ class _FaceEnrollScreenState extends State<FaceEnrollScreen> {
             ),
           ),
 
-        // Upload button
         Padding(
           padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
           child: SizedBox(
@@ -209,18 +205,18 @@ class _FaceEnrollScreenState extends State<FaceEnrollScreen> {
                 ? Container(
                     height: 56,
                     decoration: BoxDecoration(
-                      color: AppColors.accentDim,
+                      color: ac.accentDim,
                       borderRadius: BorderRadius.circular(18),
                     ),
-                    child: const Row(
+                    child: Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
                         SizedBox(width: 20, height: 20,
                             child: CircularProgressIndicator(
-                                color: AppColors.accentLight, strokeWidth: 2)),
-                        SizedBox(width: 12),
+                                color: ac.accentLight, strokeWidth: 2)),
+                        const SizedBox(width: 12),
                         Text('Đang đăng ký...',
-                            style: TextStyle(color: AppColors.accentLight,
+                            style: TextStyle(color: ac.accentLight,
                                 fontSize: 15, fontWeight: FontWeight.w600)),
                       ],
                     ),
@@ -228,17 +224,17 @@ class _FaceEnrollScreenState extends State<FaceEnrollScreen> {
                 : ElevatedButton.icon(
                     onPressed: _canUpload ? _upload : null,
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: _canUpload ? AppColors.accent : AppColors.surface,
+                      backgroundColor: _canUpload ? ac.accent : ac.cardElevated,
                       minimumSize: const Size(double.infinity, 56),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
                       elevation: _canUpload ? 4 : 0,
                     ),
                     icon: Icon(Icons.upload_rounded,
-                        color: _canUpload ? Colors.white : AppColors.textSecondary),
+                        color: _canUpload ? Colors.white : ac.textSecondary),
                     label: Text(
                       _canUpload ? 'Đăng ký khuôn mặt' : 'Chọn đủ 3 ảnh để tiếp tục',
                       style: TextStyle(
-                        color: _canUpload ? Colors.white : AppColors.textSecondary,
+                        color: _canUpload ? Colors.white : ac.textSecondary,
                         fontSize: 15, fontWeight: FontWeight.bold,
                       ),
                     ),
@@ -249,23 +245,22 @@ class _FaceEnrollScreenState extends State<FaceEnrollScreen> {
     );
   }
 
-  Widget _buildImageSlot(int index) {
+  Widget _buildImageSlot(AC ac, int index) {
     final hasImage = _images[index] != null;
     return GestureDetector(
       onTap: () => _pickImage(index),
       child: Container(
         height: 110,
         decoration: BoxDecoration(
-          color: hasImage ? AppColors.cardElevated : AppColors.card,
+          color: hasImage ? ac.cardElevated : ac.card,
           borderRadius: BorderRadius.circular(20),
           border: Border.all(
-            color: hasImage ? AppColors.success.withOpacity(0.4) : Colors.white.withOpacity(0.08),
+            color: hasImage ? AppColors.success.withOpacity(0.4) : ac.border,
             width: hasImage ? 1.5 : 1,
           ),
         ),
         child: Row(
           children: [
-            // Ảnh preview hoặc placeholder
             ClipRRect(
               borderRadius: const BorderRadius.horizontal(left: Radius.circular(20)),
               child: SizedBox(
@@ -274,14 +269,14 @@ class _FaceEnrollScreenState extends State<FaceEnrollScreen> {
                 child: hasImage
                     ? Image.memory(_images[index]!, fit: BoxFit.cover)
                     : Container(
-                        color: AppColors.surface,
+                        color: ac.cardElevated,
                         child: Column(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            Icon(_poseIcons[index], color: AppColors.textSecondary, size: 28),
+                            Icon(_poseIcons[index], color: ac.textSecondary, size: 28),
                             const SizedBox(height: 4),
-                            const Text('Chọn ảnh',
-                                style: TextStyle(color: AppColors.textSecondary, fontSize: 10)),
+                            Text('Chọn ảnh',
+                                style: TextStyle(color: ac.textSecondary, fontSize: 10)),
                           ],
                         ),
                       ),
@@ -290,7 +285,6 @@ class _FaceEnrollScreenState extends State<FaceEnrollScreen> {
 
             const SizedBox(width: 16),
 
-            // Info
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -301,12 +295,12 @@ class _FaceEnrollScreenState extends State<FaceEnrollScreen> {
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                         decoration: BoxDecoration(
-                          color: (hasImage ? AppColors.success : AppColors.accent).withOpacity(0.15),
+                          color: (hasImage ? AppColors.success : ac.accent).withOpacity(0.15),
                           borderRadius: BorderRadius.circular(8),
                         ),
                         child: Text('Pose ${index + 1}',
                             style: TextStyle(
-                              color: hasImage ? AppColors.success : AppColors.accentLight,
+                              color: hasImage ? AppColors.success : ac.accentLight,
                               fontSize: 10, fontWeight: FontWeight.bold,
                             )),
                       ),
@@ -319,11 +313,11 @@ class _FaceEnrollScreenState extends State<FaceEnrollScreen> {
                   ),
                   const SizedBox(height: 6),
                   Text(_poseLabels[index],
-                      style: const TextStyle(
-                          color: Colors.white, fontSize: 14, fontWeight: FontWeight.w600)),
+                      style: TextStyle(
+                          color: ac.textPrimary, fontSize: 14, fontWeight: FontWeight.w600)),
                   const SizedBox(height: 4),
                   Text(_poseSubs[index],
-                      style: const TextStyle(color: AppColors.textSecondary, fontSize: 11)),
+                      style: TextStyle(color: ac.textSecondary, fontSize: 11)),
                 ],
               ),
             ),
@@ -332,7 +326,7 @@ class _FaceEnrollScreenState extends State<FaceEnrollScreen> {
               padding: const EdgeInsets.only(right: 14),
               child: Icon(
                 hasImage ? Icons.edit_rounded : Icons.add_photo_alternate_rounded,
-                color: hasImage ? AppColors.success : AppColors.accentLight,
+                color: hasImage ? AppColors.success : ac.accentLight,
                 size: 22,
               ),
             ),
@@ -343,6 +337,7 @@ class _FaceEnrollScreenState extends State<FaceEnrollScreen> {
   }
 
   Widget _buildDoneView() {
+    final ac = AC.of(context);
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(32),
@@ -359,16 +354,15 @@ class _FaceEnrollScreenState extends State<FaceEnrollScreen> {
               child: const Icon(Icons.check_rounded, color: AppColors.success, size: 56),
             ),
             const SizedBox(height: 24),
-            const Text('Đăng ký thành công!',
-                style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold)),
+            Text('Đăng ký thành công!',
+                style: TextStyle(color: ac.textPrimary, fontSize: 22, fontWeight: FontWeight.bold)),
             const SizedBox(height: 10),
             Text(
               '3 ảnh của ${widget.memberName} đã được lưu vào hệ thống nhận diện.',
-              style: const TextStyle(color: AppColors.textSecondary, fontSize: 14),
+              style: TextStyle(color: ac.textSecondary, fontSize: 14),
               textAlign: TextAlign.center,
             ),
 
-            // Avatar preview
             if (_images[0] != null) ...[
               const SizedBox(height: 24),
               CircleAvatar(

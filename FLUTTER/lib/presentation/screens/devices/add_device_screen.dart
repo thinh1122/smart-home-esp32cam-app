@@ -30,22 +30,23 @@ class _AddDeviceScreenState extends State<AddDeviceScreen> with SingleTickerProv
 
   @override
   Widget build(BuildContext context) {
+    final ac = AC.of(context);
     return Scaffold(
-      backgroundColor: AppColors.bg,
+      backgroundColor: ac.bg,
       body: SafeArea(
         child: CustomScrollView(
           slivers: [
-            SliverToBoxAdapter(child: _buildHeader()),
+            SliverToBoxAdapter(child: _buildHeader(ac)),
             SliverToBoxAdapter(child: const SizedBox(height: 32)),
-            SliverToBoxAdapter(child: _buildScanAnimation()),
+            SliverToBoxAdapter(child: _buildScanAnimation(ac)),
             SliverToBoxAdapter(child: const SizedBox(height: 36)),
-            SliverToBoxAdapter(child: _buildSetupButtons()),
+            SliverToBoxAdapter(child: _buildSetupButtons(ac)),
             SliverToBoxAdapter(child: const SizedBox(height: 20)),
-            SliverToBoxAdapter(child: _buildAiServerCard()),
+            SliverToBoxAdapter(child: _buildAiServerCard(ac)),
             SliverToBoxAdapter(child: const SizedBox(height: 32)),
-            SliverToBoxAdapter(child: _buildCategoriesLabel()),
+            SliverToBoxAdapter(child: _buildCategoriesLabel(ac)),
             SliverToBoxAdapter(child: const SizedBox(height: 16)),
-            SliverToBoxAdapter(child: _buildCategories()),
+            SliverToBoxAdapter(child: _buildCategories(ac)),
             SliverToBoxAdapter(child: const SizedBox(height: 24)),
           ],
         ),
@@ -53,7 +54,7 @@ class _AddDeviceScreenState extends State<AddDeviceScreen> with SingleTickerProv
     );
   }
 
-  Widget _buildHeader() {
+  Widget _buildHeader(AC ac) {
     final canPop = Navigator.canPop(context);
     return Padding(
       padding: EdgeInsets.fromLTRB(canPop ? 4 : 20, 20, 20, 0),
@@ -62,33 +63,33 @@ class _AddDeviceScreenState extends State<AddDeviceScreen> with SingleTickerProv
           if (canPop)
             IconButton(
               onPressed: () => Navigator.pop(context),
-              icon: const Icon(Icons.arrow_back_ios_rounded, color: Colors.white70, size: 20),
+              icon: Icon(Icons.arrow_back_ios_rounded, color: ac.textSecondary, size: 20),
             ),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
-              children: const [
-                Text('Thêm thiết bị', style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold)),
-                SizedBox(height: 2),
-                Text('Kết nối thiết bị thông minh', style: TextStyle(color: AppColors.textSecondary, fontSize: 13)),
+              children: [
+                Text('Thêm thiết bị', style: TextStyle(color: ac.textPrimary, fontSize: 22, fontWeight: FontWeight.bold)),
+                const SizedBox(height: 2),
+                Text('Kết nối thiết bị thông minh', style: TextStyle(color: ac.textSecondary, fontSize: 13)),
               ],
             ),
           ),
           Container(
             padding: const EdgeInsets.all(10),
             decoration: BoxDecoration(
-              color: AppColors.card,
+              color: ac.card,
               borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: Colors.white10),
+              border: Border.all(color: ac.border),
             ),
-            child: const Icon(Icons.help_outline_rounded, color: Colors.white54, size: 18),
+            child: Icon(Icons.help_outline_rounded, color: ac.iconMuted, size: 18),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildScanAnimation() {
+  Widget _buildScanAnimation(AC ac) {
     return Center(
       child: SizedBox(
         width: 220, height: 220,
@@ -102,14 +103,14 @@ class _AddDeviceScreenState extends State<AddDeviceScreen> with SingleTickerProv
                   width: 220, height: 220,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    border: Border.all(color: AppColors.accentDim.withOpacity(0.3 * _pulseController.value), width: 1.5),
+                    border: Border.all(color: ac.accentDim.withOpacity(0.3 * _pulseController.value), width: 1.5),
                   ),
                 ),
                 Container(
                   width: 170, height: 170,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    border: Border.all(color: AppColors.accentDim.withOpacity(0.5 * _pulseController.value), width: 1.5),
+                    border: Border.all(color: ac.accentDim.withOpacity(0.5 * _pulseController.value), width: 1.5),
                   ),
                 ),
                 Container(
@@ -118,9 +119,9 @@ class _AddDeviceScreenState extends State<AddDeviceScreen> with SingleTickerProv
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
                     gradient: RadialGradient(
-                      colors: [AppColors.accent.withOpacity(0.8), AppColors.accentDim.withOpacity(0.4)],
+                      colors: [ac.accent.withOpacity(0.8), ac.accentDim.withOpacity(0.4)],
                     ),
-                    boxShadow: [AppDecor.glowShadow(AppColors.accent, blur: 24 * _pulseController.value)],
+                    boxShadow: [AppDecor.glowShadow(ac.accent, blur: 24 * _pulseController.value)],
                   ),
                   child: const Icon(Icons.radar_rounded, color: Colors.white, size: 44),
                 ),
@@ -132,7 +133,7 @@ class _AddDeviceScreenState extends State<AddDeviceScreen> with SingleTickerProv
     );
   }
 
-  Widget _buildSetupButtons() {
+  Widget _buildSetupButtons(AC ac) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20),
       child: GestureDetector(
@@ -143,7 +144,6 @@ class _AddDeviceScreenState extends State<AddDeviceScreen> with SingleTickerProv
             if (result == null || result['success'] != true) return;
             if (!mounted) return;
 
-            // Push screen chọn loại thiết bị — toàn bộ flow xử lý bên trong
             final saved = await Navigator.push<bool>(context,
               MaterialPageRoute(builder: (_) => _DeviceTypeScreen(bleMac: result['mac'] ?? '')));
             if (saved == true && mounted) {
@@ -152,7 +152,6 @@ class _AddDeviceScreenState extends State<AddDeviceScreen> with SingleTickerProv
                 backgroundColor: Colors.green,
                 duration: Duration(seconds: 2),
               ));
-              // Xoá toàn bộ stack BLE+AddDevice, về thẳng DevicesScreen
               Navigator.of(context).popUntil((route) => route.isFirst);
             }
           } catch (e) {
@@ -172,7 +171,7 @@ class _AddDeviceScreenState extends State<AddDeviceScreen> with SingleTickerProv
               end: Alignment.centerRight,
             ),
             borderRadius: BorderRadius.circular(20),
-            boxShadow: [AppDecor.glowShadow(AppColors.accent)],
+            boxShadow: [AppDecor.glowShadow(ac.accent)],
           ),
           child: const Row(
             mainAxisAlignment: MainAxisAlignment.center,
@@ -187,7 +186,7 @@ class _AddDeviceScreenState extends State<AddDeviceScreen> with SingleTickerProv
     );
   }
 
-  Widget _buildAiServerCard() {
+  Widget _buildAiServerCard(AC ac) {
     final svc = DeviceConfigService.instance;
     final hasIp = svc.hasAiIp;
     return Padding(
@@ -195,33 +194,33 @@ class _AddDeviceScreenState extends State<AddDeviceScreen> with SingleTickerProv
       child: Container(
         padding: const EdgeInsets.all(18),
         decoration: BoxDecoration(
-          color: AppColors.card,
+          color: ac.card,
           borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: hasIp ? Colors.green.withOpacity(0.25) : Colors.white10),
+          border: Border.all(color: hasIp ? Colors.green.withOpacity(0.25) : ac.border),
         ),
         child: Row(
           children: [
             Container(
               padding: const EdgeInsets.all(10),
               decoration: BoxDecoration(
-                color: (hasIp ? Colors.green : Colors.white12).withOpacity(0.15),
+                color: (hasIp ? Colors.green : ac.iconFaint).withOpacity(0.15),
                 borderRadius: BorderRadius.circular(14),
               ),
               child: Icon(Icons.smart_toy_rounded,
-                  color: hasIp ? Colors.greenAccent : Colors.white38, size: 22),
+                  color: hasIp ? Colors.greenAccent : ac.iconMuted, size: 22),
             ),
             const SizedBox(width: 14),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('AI Server (Python)',
-                      style: TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold)),
+                  Text('AI Server (Python)',
+                      style: TextStyle(color: ac.textPrimary, fontSize: 14, fontWeight: FontWeight.bold)),
                   const SizedBox(height: 4),
                   Text(
                     hasIp ? '${svc.aiIp}:${svc.aiPort}' : 'Chờ Python khởi động...',
                     style: TextStyle(
-                      color: hasIp ? Colors.greenAccent : Colors.white38,
+                      color: hasIp ? Colors.greenAccent : ac.iconMuted,
                       fontSize: 12,
                     ),
                   ),
@@ -231,13 +230,13 @@ class _AddDeviceScreenState extends State<AddDeviceScreen> with SingleTickerProv
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
               decoration: BoxDecoration(
-                color: hasIp ? Colors.green.withOpacity(0.15) : Colors.white.withOpacity(0.05),
+                color: hasIp ? Colors.green.withOpacity(0.15) : ac.border,
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Text(
                 hasIp ? 'Auto' : 'MQTT',
                 style: TextStyle(
-                  color: hasIp ? Colors.greenAccent : Colors.white38,
+                  color: hasIp ? Colors.greenAccent : ac.iconMuted,
                   fontSize: 10, fontWeight: FontWeight.bold,
                 ),
               ),
@@ -248,14 +247,14 @@ class _AddDeviceScreenState extends State<AddDeviceScreen> with SingleTickerProv
     );
   }
 
-  Widget _buildCategoriesLabel() {
-    return const Padding(
-      padding: EdgeInsets.symmetric(horizontal: 20),
-      child: Text('Thêm thủ công', style: TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.bold)),
+  Widget _buildCategoriesLabel(AC ac) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      child: Text('Thêm thủ công', style: TextStyle(color: ac.textPrimary, fontSize: 17, fontWeight: FontWeight.bold)),
     );
   }
 
-  Widget _buildCategories() {
+  Widget _buildCategories(AC ac) {
     final cats = [
       _Cat('Đèn thông minh', 'Bóng đèn, đèn relay', Icons.lightbulb_rounded, AppColors.lightColor,
           onTap: _addLightManual),
@@ -272,7 +271,7 @@ class _AddDeviceScreenState extends State<AddDeviceScreen> with SingleTickerProv
         physics: const NeverScrollableScrollPhysics(),
         crossAxisSpacing: 12, mainAxisSpacing: 12,
         childAspectRatio: 1.1,
-        children: cats.map(_buildCatCard).toList(),
+        children: cats.map((c) => _buildCatCard(ac, c)).toList(),
       ),
     );
   }
@@ -320,7 +319,7 @@ class _AddDeviceScreenState extends State<AddDeviceScreen> with SingleTickerProv
     }
   }
 
-  Widget _buildCatCard(_Cat cat) {
+  Widget _buildCatCard(AC ac, _Cat cat) {
     return Material(
       color: Colors.transparent,
       child: InkWell(
@@ -329,12 +328,12 @@ class _AddDeviceScreenState extends State<AddDeviceScreen> with SingleTickerProv
         child: Container(
           padding: const EdgeInsets.all(20),
           decoration: BoxDecoration(
-            color: AppColors.card,
+            color: ac.card,
             borderRadius: BorderRadius.circular(24),
             border: Border.all(
               color: cat.onTap != null
                   ? cat.color.withOpacity(0.25)
-                  : Colors.white.withOpacity(0.06),
+                  : ac.border,
             ),
           ),
           child: Column(
@@ -349,9 +348,9 @@ class _AddDeviceScreenState extends State<AddDeviceScreen> with SingleTickerProv
                 child: Icon(cat.icon, color: cat.color, size: 22),
               ),
               const Spacer(),
-              Text(cat.name, style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold)),
+              Text(cat.name, style: TextStyle(color: ac.textPrimary, fontSize: 14, fontWeight: FontWeight.bold)),
               const SizedBox(height: 2),
-              Text(cat.subtitle, style: const TextStyle(color: AppColors.textSecondary, fontSize: 11)),
+              Text(cat.subtitle, style: TextStyle(color: ac.textSecondary, fontSize: 11)),
             ],
           ),
         ),
@@ -375,7 +374,7 @@ class _PickResult {
   const _PickResult(this.key, this.label, this.emoji, this.color, {this.icon});
 }
 
-// ── Screen chọn loại thiết bị (xử lý toàn bộ flow) ──────────
+// ── Screen chọn loại thiết bị ────────────────────────────────
 class _DeviceTypeScreen extends StatefulWidget {
   final String bleMac;
   const _DeviceTypeScreen({required this.bleMac});
@@ -414,7 +413,6 @@ class _DeviceTypeScreenState extends State<_DeviceTypeScreen> {
       'ble_mac': widget.bleMac,
     }, userId: AuthService.instance.userId);
 
-    // Gửi room config xuống ESP32 qua MQTT → ESP32 lưu vào NVS
     final macTopic = widget.bleMac.replaceAll(':', '').toLowerCase();
     MQTTService().publish('home/devices/config/$macTopic', {
       'room': room.key,
@@ -424,7 +422,7 @@ class _DeviceTypeScreenState extends State<_DeviceTypeScreen> {
     if (mounted) Navigator.pop(context, true);
   }
 
-  Widget _typeOption(String title, String subtitle, IconData icon, Color color, VoidCallback onTap) {
+  Widget _typeOption(AC ac, String title, String subtitle, IconData icon, Color color, VoidCallback onTap) {
     return Material(
       color: Colors.transparent,
       child: InkWell(
@@ -450,9 +448,9 @@ class _DeviceTypeScreenState extends State<_DeviceTypeScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(title, style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
+                    Text(title, style: TextStyle(color: ac.textPrimary, fontSize: 16, fontWeight: FontWeight.bold)),
                     const SizedBox(height: 4),
-                    Text(subtitle, style: const TextStyle(color: AppColors.textSecondary, fontSize: 12)),
+                    Text(subtitle, style: TextStyle(color: ac.textSecondary, fontSize: 12)),
                   ],
                 ),
               ),
@@ -466,16 +464,17 @@ class _DeviceTypeScreenState extends State<_DeviceTypeScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final ac = AC.of(context);
     return Scaffold(
-      backgroundColor: AppColors.bg,
+      backgroundColor: ac.bg,
       appBar: AppBar(
-        backgroundColor: AppColors.bg,
+        backgroundColor: ac.bg,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_rounded, color: Colors.white70),
+          icon: Icon(Icons.arrow_back_ios_rounded, color: ac.textSecondary),
           onPressed: () => Navigator.pop(context),
         ),
-        title: const Text('Loại thiết bị', style: TextStyle(color: Colors.white, fontSize: 17)),
+        title: Text('Loại thiết bị', style: TextStyle(color: ac.textPrimary, fontSize: 17)),
       ),
       body: SafeArea(
         child: Padding(
@@ -485,16 +484,16 @@ class _DeviceTypeScreenState extends State<_DeviceTypeScreen> {
             children: [
               const Center(child: Icon(Icons.check_circle_rounded, color: Colors.greenAccent, size: 64)),
               const SizedBox(height: 16),
-              const Center(child: Text('Kết nối thành công!',
-                  style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold))),
+              Center(child: Text('Kết nối thành công!',
+                  style: TextStyle(color: ac.textPrimary, fontSize: 20, fontWeight: FontWeight.bold))),
               const SizedBox(height: 8),
-              const Center(child: Text('Đây là thiết bị gì?',
-                  style: TextStyle(color: AppColors.textSecondary, fontSize: 14))),
+              Center(child: Text('Đây là thiết bị gì?',
+                  style: TextStyle(color: ac.textSecondary, fontSize: 14))),
               const SizedBox(height: 40),
-              _typeOption('Camera', 'ESP32-CAM, camera an ninh',
+              _typeOption(ac, 'Camera', 'ESP32-CAM, camera an ninh',
                   Icons.videocam_rounded, AppColors.cameraColor, _onTapCamera),
               const SizedBox(height: 16),
-              _typeOption('Đèn', 'ESP32-S3 + Relay, điều khiển đèn',
+              _typeOption(ac, 'Đèn', 'ESP32-S3 + Relay, điều khiển đèn',
                   Icons.lightbulb_rounded, AppColors.lightColor, _onTapLight),
             ],
           ),
@@ -519,19 +518,20 @@ class _RoomPickerScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final ac = AC.of(context);
     return Scaffold(
-      backgroundColor: AppColors.bg,
+      backgroundColor: ac.bg,
       appBar: AppBar(
-        backgroundColor: AppColors.bg,
+        backgroundColor: ac.bg,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_rounded, color: Colors.white70),
+          icon: Icon(Icons.arrow_back_ios_rounded, color: ac.textSecondary),
           onPressed: () => Navigator.pop(context),
         ),
-        title: const Text('Chọn phòng', style: TextStyle(color: Colors.white, fontSize: 17)),
+        title: Text('Chọn phòng', style: TextStyle(color: ac.textPrimary, fontSize: 17)),
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(1),
-          child: Container(height: 1, color: Colors.white10),
+          child: Container(height: 1, color: ac.divider),
         ),
       ),
       body: SafeArea(
@@ -540,8 +540,8 @@ class _RoomPickerScreen extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text('Đèn sẽ được đặt ở phòng nào?',
-                  style: TextStyle(color: AppColors.textSecondary, fontSize: 14)),
+              Text('Đèn sẽ được đặt ở phòng nào?',
+                  style: TextStyle(color: ac.textSecondary, fontSize: 14)),
               const SizedBox(height: 24),
               Expanded(
                 child: GridView.count(
@@ -599,19 +599,20 @@ class _LightTypePickerScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final ac = AC.of(context);
     return Scaffold(
-      backgroundColor: AppColors.bg,
+      backgroundColor: ac.bg,
       appBar: AppBar(
-        backgroundColor: AppColors.bg,
+        backgroundColor: ac.bg,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_rounded, color: Colors.white70),
+          icon: Icon(Icons.arrow_back_ios_rounded, color: ac.textSecondary),
           onPressed: () => Navigator.pop(context),
         ),
-        title: const Text('Loại đèn', style: TextStyle(color: Colors.white, fontSize: 17)),
+        title: Text('Loại đèn', style: TextStyle(color: ac.textPrimary, fontSize: 17)),
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(1),
-          child: Container(height: 1, color: Colors.white10),
+          child: Container(height: 1, color: ac.divider),
         ),
       ),
       body: SafeArea(
@@ -621,7 +622,7 @@ class _LightTypePickerScreen extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text('$roomLabel — chọn loại đèn',
-                  style: const TextStyle(color: AppColors.textSecondary, fontSize: 14)),
+                  style: TextStyle(color: ac.textSecondary, fontSize: 14)),
               const SizedBox(height: 20),
               Expanded(
                 child: ListView.separated(
@@ -650,7 +651,7 @@ class _LightTypePickerScreen extends StatelessWidget {
                               ),
                               const SizedBox(width: 16),
                               Text(t.label,
-                                  style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w600)),
+                                  style: TextStyle(color: ac.textPrimary, fontSize: 15, fontWeight: FontWeight.w600)),
                               const Spacer(),
                               Icon(Icons.chevron_right_rounded, color: t.color.withOpacity(0.6), size: 22),
                             ],

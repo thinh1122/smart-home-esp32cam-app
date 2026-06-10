@@ -22,16 +22,13 @@ class FrontDoorCamScreen extends StatefulWidget {
 class _FrontDoorCamScreenState extends State<FrontDoorCamScreen> {
   List<LogEntry> _logs = [];
 
-  // Stream state
   Key _streamKey = UniqueKey();
   bool _isStreamActive = true;
   bool _isStreamConnected = false;
   Timer? _retryTimer;
 
-  // Face result from MQTT (Python server publishes, Flutter just displays)
   List<Map<String, dynamic>> _recognizedFaces = [];
 
-  // MQTT
   StreamSubscription? _mqttFaceSub;
 
   @override
@@ -54,7 +51,6 @@ class _FrontDoorCamScreenState extends State<FrontDoorCamScreen> {
     super.dispose();
   }
 
-  // Flutter chỉ lắng nghe MQTT — Python server tự pull frame và publish kết quả
   void _listenMQTT() {
     MQTTService().connect().then((_) {
       _mqttFaceSub = MQTTService().faceRecognitionStream.listen((event) {
@@ -88,7 +84,6 @@ class _FrontDoorCamScreenState extends State<FrontDoorCamScreen> {
           }
         }
 
-        // Reload logs
         DatabaseHelper.instance.getLogs(limit: 30).then((logs) {
           if (mounted) setState(() => _logs = logs.map(LogEntry.fromMap).toList());
         });
@@ -107,7 +102,6 @@ class _FrontDoorCamScreenState extends State<FrontDoorCamScreen> {
   void _onStreamError() {
     if (!mounted) return;
     setState(() => _isStreamConnected = false);
-    // Tự retry sau 3 giây khi stream bị mất
     _retryTimer?.cancel();
     _retryTimer = Timer(const Duration(seconds: 3), () {
       if (mounted && AppConfig.streamUrl.isNotEmpty) {
@@ -130,7 +124,6 @@ class _FrontDoorCamScreenState extends State<FrontDoorCamScreen> {
       ));
   }
 
-  // ── Data loading ──────────────────────────────────────────────────────────
   Future<void> _loadData() async {
     final logs = await DatabaseHelper.instance.getLogs(limit: 30);
     if (!mounted) return;
@@ -143,21 +136,21 @@ class _FrontDoorCamScreenState extends State<FrontDoorCamScreen> {
     }
   }
 
-  // ── Build ─────────────────────────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
+    final ac = AC.of(context);
     return Scaffold(
-      backgroundColor: AppColors.bg,
+      backgroundColor: ac.bg,
       body: SafeArea(
         child: CustomScrollView(
           slivers: [
-            SliverToBoxAdapter(child: _buildHeader()),
+            SliverToBoxAdapter(child: _buildHeader(ac)),
             SliverToBoxAdapter(child: const SizedBox(height: 20)),
-            SliverToBoxAdapter(child: _buildCameraFeed()),
+            SliverToBoxAdapter(child: _buildCameraFeed(ac)),
             SliverToBoxAdapter(child: const SizedBox(height: 20)),
-            SliverToBoxAdapter(child: _buildActionButtons()),
+            SliverToBoxAdapter(child: _buildActionButtons(ac)),
             SliverToBoxAdapter(child: const SizedBox(height: 24)),
-            SliverToBoxAdapter(child: _buildActivitySection()),
+            SliverToBoxAdapter(child: _buildActivitySection(ac)),
             SliverToBoxAdapter(child: const SizedBox(height: 24)),
           ],
         ),
@@ -165,37 +158,35 @@ class _FrontDoorCamScreenState extends State<FrontDoorCamScreen> {
     );
   }
 
-  Widget _buildHeader() {
+  Widget _buildHeader(AC ac) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          const Column(
+          Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('Front Door', style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold)),
-              SizedBox(height: 2),
-              Text('Security Camera', style: TextStyle(color: AppColors.textSecondary, fontSize: 13)),
+              Text('Front Door', style: TextStyle(color: ac.textPrimary, fontSize: 22, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 2),
+              Text('Security Camera', style: TextStyle(color: ac.textSecondary, fontSize: 13)),
             ],
           ),
           Row(
             children: [
-              // Reconnect button
               GestureDetector(
                 onTap: _reconnectStream,
                 child: Container(
                   padding: const EdgeInsets.all(10),
                   decoration: BoxDecoration(
-                    color: AppColors.card,
+                    color: ac.card,
                     borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: Colors.white10),
+                    border: Border.all(color: ac.border),
                   ),
-                  child: const Icon(Icons.refresh_rounded, color: Colors.white70, size: 20),
+                  child: Icon(Icons.refresh_rounded, color: ac.textSecondary, size: 20),
                 ),
               ),
               const SizedBox(width: 10),
-              // Live badge
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                 decoration: BoxDecoration(
@@ -222,35 +213,32 @@ class _FrontDoorCamScreenState extends State<FrontDoorCamScreen> {
     );
   }
 
-  Widget _buildCameraFeed() {
+  Widget _buildCameraFeed(AC ac) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(28),
         child: Container(
           height: 240,
-          color: AppColors.cardElevated,
+          color: ac.cardElevated,
           child: Stack(
             fit: StackFit.expand,
             children: [
-              // MJPEG stream — key forces full rebuild on reconnect
               if (_isStreamActive && AppConfig.streamUrl.isNotEmpty)
                 LiveMjpeg(
                   key: _streamKey,
                   stream: AppConfig.streamUrl,
                   error: (ctx, err, stack) {
                     WidgetsBinding.instance.addPostFrameCallback((_) => _onStreamError());
-                    return _buildStreamError();
+                    return _buildStreamError(ac);
                   },
                 ),
 
-              // Corner reticle marks
               Positioned(top: 14, left: 14, child: _cornerMark(top: true, left: true)),
               Positioned(top: 14, right: 14, child: _cornerMark(top: true, left: false)),
               Positioned(bottom: 14, left: 14, child: _cornerMark(top: false, left: true)),
               Positioned(bottom: 14, right: 14, child: _cornerMark(top: false, left: false)),
 
-              // Info pills top-left
               Positioned(
                 top: 36, left: 36,
                 child: Column(
@@ -263,7 +251,6 @@ class _FrontDoorCamScreenState extends State<FrontDoorCamScreen> {
                 ),
               ),
 
-              // Face recognition result overlay
               if (_recognizedFaces.isNotEmpty)
                 Positioned(
                   bottom: 14, left: 14, right: 14,
@@ -276,23 +263,23 @@ class _FrontDoorCamScreenState extends State<FrontDoorCamScreen> {
     );
   }
 
-  Widget _buildStreamError() {
+  Widget _buildStreamError(AC ac) {
     final hasIp = DeviceConfigService.instance.hasEsp32Ip;
     return Container(
-      color: AppColors.cardElevated,
+      color: ac.cardElevated,
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(hasIp ? Icons.videocam_off_rounded : Icons.wifi_off_rounded, color: Colors.white24, size: 44),
+          Icon(hasIp ? Icons.videocam_off_rounded : Icons.wifi_off_rounded, color: ac.iconFaint, size: 44),
           const SizedBox(height: 12),
           Text(
             hasIp ? 'Camera offline' : 'Chưa cấu hình ESP32',
-            style: const TextStyle(color: Colors.white54, fontSize: 14, fontWeight: FontWeight.w600),
+            style: TextStyle(color: ac.iconMuted, fontSize: 14, fontWeight: FontWeight.w600),
           ),
           const SizedBox(height: 4),
           Text(
             hasIp ? AppConfig.streamUrl : 'Vào Devices → BLE WiFi Setup để kết nối ESP32',
-            style: const TextStyle(color: Colors.white30, fontSize: 10),
+            style: TextStyle(color: ac.iconFaint, fontSize: 10),
             textAlign: TextAlign.center,
           ),
           const SizedBox(height: 16),
@@ -301,15 +288,15 @@ class _FrontDoorCamScreenState extends State<FrontDoorCamScreen> {
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
               decoration: BoxDecoration(
-                color: AppColors.accentDim,
+                color: ac.accentDim,
                 borderRadius: BorderRadius.circular(12),
               ),
-              child: const Row(
+              child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(Icons.refresh_rounded, color: AppColors.accentLight, size: 16),
-                  SizedBox(width: 8),
-                  Text('Reconnect', style: TextStyle(color: AppColors.accentLight, fontSize: 13, fontWeight: FontWeight.bold)),
+                  Icon(Icons.refresh_rounded, color: ac.accentLight, size: 16),
+                  const SizedBox(width: 8),
+                  Text('Reconnect', style: TextStyle(color: ac.accentLight, fontSize: 13, fontWeight: FontWeight.bold)),
                 ],
               ),
             ),
@@ -407,50 +394,50 @@ class _FrontDoorCamScreenState extends State<FrontDoorCamScreen> {
     ),
   );
 
-  Widget _buildActionButtons() {
+  Widget _buildActionButtons(AC ac) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20),
       child: Row(
         children: [
-          Expanded(child: _actionBtn('Members', Icons.people_alt_rounded, AppColors.accentLight, isPrimary: true, onTap: _goToMembers)),
+          Expanded(child: _actionBtn(ac, 'Members', Icons.people_alt_rounded, ac.accentLight, isPrimary: true, onTap: _goToMembers)),
           const SizedBox(width: 12),
-          Expanded(child: _actionBtn('Snapshot', Icons.camera_alt_rounded, AppColors.info, onTap: _takeSnapshot)),
+          Expanded(child: _actionBtn(ac, 'Snapshot', Icons.camera_alt_rounded, AppColors.info, onTap: _takeSnapshot)),
           const SizedBox(width: 12),
-          Expanded(child: _actionBtn('Alarm', Icons.campaign_rounded, AppColors.warning)),
+          Expanded(child: _actionBtn(ac, 'Alarm', Icons.campaign_rounded, AppColors.warning)),
         ],
       ),
     );
   }
 
-  Widget _actionBtn(String label, IconData icon, Color color, {bool isPrimary = false, VoidCallback? onTap}) {
+  Widget _actionBtn(AC ac, String label, IconData icon, Color color, {bool isPrimary = false, VoidCallback? onTap}) {
     return GestureDetector(
       onTap: onTap,
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 18),
         decoration: BoxDecoration(
-          color: isPrimary ? AppColors.accentDim : AppColors.card,
+          color: isPrimary ? ac.accentDim : ac.card,
           borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: isPrimary ? AppColors.accentLight.withOpacity(0.4) : Colors.white10),
+          border: Border.all(color: isPrimary ? ac.accentLight.withOpacity(0.4) : ac.border),
         ),
         child: Column(
           children: [
             Icon(icon, color: color, size: 24),
             const SizedBox(height: 8),
-            Text(label, style: TextStyle(color: isPrimary ? AppColors.accentLight : Colors.white70, fontSize: 12, fontWeight: FontWeight.w600)),
+            Text(label, style: TextStyle(color: isPrimary ? ac.accentLight : ac.textSecondary, fontSize: 12, fontWeight: FontWeight.w600)),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildActivitySection() {
+  Widget _buildActivitySection(AC ac) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20),
       child: Container(
         decoration: BoxDecoration(
-          color: AppColors.card,
+          color: ac.card,
           borderRadius: BorderRadius.circular(28),
-          border: Border.all(color: Colors.white.withOpacity(0.06)),
+          border: Border.all(color: ac.border),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -460,22 +447,22 @@ class _FrontDoorCamScreenState extends State<FrontDoorCamScreen> {
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  const Text('Recent Activity', style: TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.bold)),
+                  Text('Recent Activity', style: TextStyle(color: ac.textPrimary, fontSize: 17, fontWeight: FontWeight.bold)),
                   Container(
                     padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(color: AppColors.surface, borderRadius: BorderRadius.circular(10)),
-                    child: const Icon(Icons.filter_list_rounded, color: Colors.white70, size: 16),
+                    decoration: BoxDecoration(color: ac.cardElevated, borderRadius: BorderRadius.circular(10)),
+                    child: Icon(Icons.filter_list_rounded, color: ac.textSecondary, size: 16),
                   ),
                 ],
               ),
             ),
             if (_logs.isEmpty)
-              const Padding(
-                padding: EdgeInsets.fromLTRB(20, 0, 20, 20),
-                child: Text('No activity yet', style: TextStyle(color: AppColors.textSecondary)),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+                child: Text('No activity yet', style: TextStyle(color: ac.textSecondary)),
               )
             else
-              ..._logs.take(8).map((log) => _buildLogItem(log)),
+              ..._logs.take(8).map((log) => _buildLogItem(ac, log)),
             const SizedBox(height: 8),
           ],
         ),
@@ -483,15 +470,15 @@ class _FrontDoorCamScreenState extends State<FrontDoorCamScreen> {
     );
   }
 
-  Widget _buildLogItem(LogEntry log) {
-    final color = log.isSuccess ? AppColors.success : log.isWarning ? AppColors.warning : AppColors.textSecondary;
+  Widget _buildLogItem(AC ac, LogEntry log) {
+    final color = log.isSuccess ? AppColors.success : log.isWarning ? AppColors.warning : ac.textSecondary;
     final icon = log.isSuccess ? Icons.check_circle_rounded : log.isWarning ? Icons.warning_amber_rounded : Icons.info_outline_rounded;
 
     return Container(
       margin: const EdgeInsets.fromLTRB(12, 0, 12, 8),
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: AppColors.surface,
+        color: ac.cardElevated,
         borderRadius: BorderRadius.circular(16),
       ),
       child: Row(
@@ -506,25 +493,23 @@ class _FrontDoorCamScreenState extends State<FrontDoorCamScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(log.action, style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600)),
+                Text(log.action, style: TextStyle(color: ac.textPrimary, fontSize: 13, fontWeight: FontWeight.w600)),
                 const SizedBox(height: 2),
-                Text(log.detail, style: const TextStyle(color: AppColors.textSecondary, fontSize: 11), maxLines: 1, overflow: TextOverflow.ellipsis),
+                Text(log.detail, style: TextStyle(color: ac.textSecondary, fontSize: 11), maxLines: 1, overflow: TextOverflow.ellipsis),
               ],
             ),
           ),
           const SizedBox(width: 8),
-          Text(log.timeString, style: const TextStyle(color: AppColors.textSecondary, fontSize: 11)),
+          Text(log.timeString, style: TextStyle(color: ac.textSecondary, fontSize: 11)),
         ],
       ),
     );
   }
 
-  // ── Navigate to Members tab ───────────────────────────────────────────────
   void _goToMembers() {
     Navigator.push(context, MaterialPageRoute(builder: (_) => const MembersScreen()));
   }
 
-  // ── Snapshot ──────────────────────────────────────────────────────────────
   Future<void> _takeSnapshot() async {
     try {
       final res = await http.get(Uri.parse(AppConfig.captureUrl)).timeout(const Duration(seconds: 5));
@@ -532,12 +517,12 @@ class _FrontDoorCamScreenState extends State<FrontDoorCamScreen> {
         final b64 = base64Encode(res.bodyBytes);
         await DatabaseHelper.instance.addLog('Snapshot', 'Chụp ảnh thủ công');
         if (mounted) _showBanner('Snapshot đã lưu', AppColors.success);
-        // Show preview
         if (mounted) {
+          final ac = AC.of(context);
           showDialog(
             context: context,
             builder: (_) => Dialog(
-              backgroundColor: AppColors.card,
+              backgroundColor: ac.card,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
               child: Padding(
                 padding: const EdgeInsets.all(12),
@@ -549,7 +534,7 @@ class _FrontDoorCamScreenState extends State<FrontDoorCamScreen> {
                       child: Image.memory(res.bodyBytes, fit: BoxFit.contain),
                     ),
                     const SizedBox(height: 12),
-                    TextButton(onPressed: () => Navigator.pop(context), child: const Text('Đóng', style: TextStyle(color: AppColors.accentLight))),
+                    TextButton(onPressed: () => Navigator.pop(context), child: Text('Đóng', style: TextStyle(color: ac.accentLight))),
                   ],
                 ),
               ),

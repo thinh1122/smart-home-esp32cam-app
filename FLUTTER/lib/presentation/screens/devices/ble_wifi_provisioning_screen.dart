@@ -12,7 +12,7 @@ class MyWiFiNetwork {
   final String ssid;
   final int level;
   final String capabilities;
-  
+
   const MyWiFiNetwork({
     required this.ssid,
     required this.level,
@@ -21,7 +21,7 @@ class MyWiFiNetwork {
 
   @override
   bool operator ==(Object other) => identical(this, other) || other is MyWiFiNetwork && runtimeType == other.runtimeType && ssid == other.ssid;
-  
+
   @override
   int get hashCode => ssid.hashCode;
 }
@@ -37,27 +37,25 @@ class _BLEWiFiProvisioningScreenState extends State<BLEWiFiProvisioningScreen> {
   final _ssidCtrl = TextEditingController();
   final _passCtrl = TextEditingController();
 
-  // BLE UUIDs (must match ESP32 firmware)
   static const _serviceUUID    = '4fafc201-1fb5-459e-8fcc-c5c9c331914b';
   static const _ssidCharUUID   = 'beb5483e-36e1-4688-b7f5-ea07361b26a8';
   static const _passCharUUID   = '1c95d5e3-d8f7-413a-bf3d-7a2e5d7be87e';
   static const _statusCharUUID = 'd8de624e-140f-4a22-8594-e2216b84a5f2';
   static const _wifiListCharUUID = '2b8c9e50-7182-4f32-8414-b49911e0eb7e';
-  static const _devIdCharUUID  = 'c0de1234-abcd-ef01-2345-67890abcdef0'; // Device ID cố định từ ESP32
+  static const _devIdCharUUID  = 'c0de1234-abcd-ef01-2345-67890abcdef0';
 
-  // State
   bool _isScanning = false;
   bool _isConnecting = false;
   bool _isConfiguring = false;
   bool _obscurePass = true;
-  int _step = 0; // 0: Scan, 1: Connecting, 2: WiFi list, 3: Verifying, 4: Password, 5: Done
+  int _step = 0;
 
   List<ScanResult> _scanResults = [];
   List<MyWiFiNetwork> _wifiNetworks = [];
   String? _selectedSSID;
   BluetoothDevice? _connectedDevice;
   BluetoothCharacteristic? _ssidChar, _passChar, _statusChar, _wifiListChar, _devIdChar;
-  String _deviceId = ''; // Device ID đọc từ ESP32 qua BLE — dùng thay cho MAC
+  String _deviceId = '';
   String? _esp32IP;
 
   StreamSubscription? _scanSub, _statusSub;
@@ -79,13 +77,12 @@ class _BLEWiFiProvisioningScreenState extends State<BLEWiFiProvisioningScreen> {
   }
 
   Future<void> _checkBluetooth() async {
-    if (await FlutterBluePlus.isSupported == false) { 
-      _showError('Device does not support Bluetooth'); 
-      return; 
+    if (await FlutterBluePlus.isSupported == false) {
+      _showError('Device does not support Bluetooth');
+      return;
     }
-    
+
     try {
-      // Chờ tối đa 5 giây để Bluetooth chuyển sang trạng thái ON
       await FlutterBluePlus.adapterState
           .where((state) => state == BluetoothAdapterState.on)
           .first
@@ -97,7 +94,6 @@ class _BLEWiFiProvisioningScreenState extends State<BLEWiFiProvisioningScreen> {
   }
 
   Future<void> _startScan() async {
-    // Kiểm tra state lần nữa trước khi scan (hỗ trợ nút Scan Again)
     if (await FlutterBluePlus.adapterState.first != BluetoothAdapterState.on) {
       _showError('Bluetooth is not ON. Cannot scan.');
       return;
@@ -150,8 +146,8 @@ class _BLEWiFiProvisioningScreenState extends State<BLEWiFiProvisioningScreen> {
                 if (mounted) {
                   setState(() {
                     _isConfiguring = false;
-                    _step = 4; // Quay về bước nhập mật khẩu
-                    _passCtrl.clear(); // Xoá mật khẩu cũ
+                    _step = 4;
+                    _passCtrl.clear();
                   });
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(
@@ -177,12 +173,10 @@ class _BLEWiFiProvisioningScreenState extends State<BLEWiFiProvisioningScreen> {
         throw Exception('BLE characteristics not found. Check ESP32 firmware.');
       }
 
-      // Đọc Device ID từ ESP32 — hoạt động cả Android lẫn iOS (không dùng MAC)
       if (_devIdChar != null) {
         final idBytes = await _devIdChar!.read();
         _deviceId = String.fromCharCodes(idBytes).trim();
       }
-      // Fallback: nếu firmware cũ chưa có characteristic này, dùng remoteId normalize
       if (_deviceId.isEmpty) {
         _deviceId = device.remoteId.str.replaceAll(':', '').toLowerCase();
       }
@@ -198,7 +192,6 @@ class _BLEWiFiProvisioningScreenState extends State<BLEWiFiProvisioningScreen> {
 
   Future<void> _scanWiFiNetworks() async {
     try {
-      // 1. Dùng danh sách WiFi do ESP32 tự quét và gửi qua BLE (Tương thích 100% Android + iOS)
       if (_wifiListChar != null) {
         final value = await _wifiListChar!.read();
         final rawList = String.fromCharCodes(value);
@@ -211,14 +204,13 @@ class _BLEWiFiProvisioningScreenState extends State<BLEWiFiProvisioningScreen> {
               )).toList();
             });
           }
-          return; // Nếu đọc được thì dừng, không cần quét bằng điện thoại nữa
+          return;
         }
       }
 
-      // 2. Fallback: Nếu ESP32 chưa có FW mới, dùng thư viện điện thoại quét
       final canScan = await WiFiScan.instance.canGetScannedResults();
       if (canScan != CanGetScannedResults.yes) return;
-      
+
       await WiFiScan.instance.startScan();
       await Future.delayed(const Duration(seconds: 3));
       final networks = await WiFiScan.instance.getScannedResults();
@@ -236,16 +228,14 @@ class _BLEWiFiProvisioningScreenState extends State<BLEWiFiProvisioningScreen> {
     }
   }
 
-  // ── Select WiFi → go directly to password step ───────────────────────────
   void _selectWiFi(MyWiFiNetwork network) {
     setState(() {
       _selectedSSID = network.ssid;
       _ssidCtrl.text = network.ssid;
-      _step = 4; // Skip verify step — sending "verify:ssid" corrupts SSID on ESP32
+      _step = 4;
     });
   }
 
-  // ── Send WiFi config to ESP32 ─────────────────────────────────────────────
   Future<void> _sendWiFiConfig() async {
     if (_ssidCtrl.text.isEmpty) { _showError('Please enter SSID'); return; }
     if (_ssidChar == null || _passChar == null) { _showError('BLE not connected'); return; }
@@ -256,7 +246,6 @@ class _BLEWiFiProvisioningScreenState extends State<BLEWiFiProvisioningScreen> {
       await Future.delayed(const Duration(milliseconds: 500));
       await _passChar!.write(_passCtrl.text.codeUnits);
       _showSnack('Đã gửi! ESP32 đang kết nối WiFi...', AppColors.info);
-      // Timeout 20s: nếu không nhận được notify và không fail -> coi như thành công
       Future.delayed(const Duration(seconds: 20), () {
         if (mounted && _isConfiguring && _step != 5) {
           _onConnectedSuccessfully('unknown');
@@ -272,7 +261,6 @@ class _BLEWiFiProvisioningScreenState extends State<BLEWiFiProvisioningScreen> {
     if (!mounted) return;
     DeviceConfigService.instance.saveEsp32Ip(ip);
     _showSnack('ESP32 connected! IP: $ip', AppColors.success);
-    // Thông báo cho Python AI server biết IP mới của ESP32
     _notifyAiServer(ip);
     Future.delayed(const Duration(seconds: 2), () {
       if (mounted) {
@@ -281,7 +269,7 @@ class _BLEWiFiProvisioningScreenState extends State<BLEWiFiProvisioningScreen> {
           'deviceIP': ip,
           'deviceName': _connectedDevice?.platformName ?? 'ESP32Device',
           'wifiSSID': _selectedSSID ?? _ssidCtrl.text,
-          'mac': _deviceId, // Device ID cố định từ ESP32 — hoạt động cả Android lẫn iOS
+          'mac': _deviceId,
         });
       }
     });
@@ -323,20 +311,20 @@ class _BLEWiFiProvisioningScreenState extends State<BLEWiFiProvisioningScreen> {
     ));
   }
 
-  // ── Build ─────────────────────────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
+    final ac = AC.of(context);
     return Scaffold(
-      backgroundColor: AppColors.bg,
+      backgroundColor: ac.bg,
       appBar: AppBar(
-        backgroundColor: AppColors.card,
-        foregroundColor: Colors.white,
-        title: const Text('BLE WiFi Setup', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+        backgroundColor: ac.card,
+        foregroundColor: ac.textPrimary,
+        title: Text('BLE WiFi Setup', style: TextStyle(color: ac.textPrimary, fontWeight: FontWeight.bold)),
         elevation: 0,
         actions: [
           if (_connectedDevice != null)
             IconButton(
-              icon: const Icon(Icons.bluetooth_disabled_rounded, color: AppColors.textSecondary),
+              icon: Icon(Icons.bluetooth_disabled_rounded, color: ac.textSecondary),
               onPressed: () async { await _disconnect(); setState(() { _step = 0; _wifiNetworks.clear(); _selectedSSID = null; }); },
             ),
         ],
@@ -346,26 +334,26 @@ class _BLEWiFiProvisioningScreenState extends State<BLEWiFiProvisioningScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            _buildStepBar(),
+            _buildStepBar(ac),
             const SizedBox(height: 24),
-            if (_step == 0) _buildScanView(),
-            if (_step == 1) _buildConnectingView(),
-            if (_step == 2) _buildWiFiListView(),
-            if (_step == 3) _buildVerifyingView(),
-            if (_step == 4) _buildPasswordView(),
-            if (_step == 5) _buildDoneView(),
+            if (_step == 0) _buildScanView(ac),
+            if (_step == 1) _buildConnectingView(ac),
+            if (_step == 2) _buildWiFiListView(ac),
+            if (_step == 3) _buildVerifyingView(ac),
+            if (_step == 4) _buildPasswordView(ac),
+            if (_step == 5) _buildDoneView(ac),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildStepBar() {
+  Widget _buildStepBar(AC ac) {
     const labels = ['Scan', 'Connect', 'WiFi', 'Verify', 'Config', 'Done'];
     return Row(
       children: List.generate(labels.length * 2 - 1, (i) {
         if (i.isOdd) {
-          return Expanded(child: Container(height: 2, color: i ~/ 2 < _step ? AppColors.accent : Colors.white12));
+          return Expanded(child: Container(height: 2, color: i ~/ 2 < _step ? ac.accent : ac.divider));
         }
         final stepIdx = i ~/ 2;
         final isDone = stepIdx < _step;
@@ -376,127 +364,127 @@ class _BLEWiFiProvisioningScreenState extends State<BLEWiFiProvisioningScreen> {
               width: 28, height: 28,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: isDone ? AppColors.accent : isActive ? AppColors.accentDim : AppColors.card,
-                border: Border.all(color: isDone || isActive ? AppColors.accent : Colors.white24),
+                color: isDone ? ac.accent : isActive ? ac.accentDim : ac.card,
+                border: Border.all(color: isDone || isActive ? ac.accent : ac.border),
               ),
               child: Center(
                 child: isDone
                     ? const Icon(Icons.check_rounded, color: Colors.white, size: 14)
-                    : Text('${stepIdx + 1}', style: TextStyle(color: isActive ? AppColors.accentLight : Colors.white38, fontSize: 11, fontWeight: FontWeight.bold)),
+                    : Text('${stepIdx + 1}', style: TextStyle(color: isActive ? ac.accentLight : ac.iconMuted, fontSize: 11, fontWeight: FontWeight.bold)),
               ),
             ),
             const SizedBox(height: 4),
-            Text(labels[stepIdx], style: TextStyle(color: isActive ? AppColors.accentLight : AppColors.textSecondary, fontSize: 9)),
+            Text(labels[stepIdx], style: TextStyle(color: isActive ? ac.accentLight : ac.textSecondary, fontSize: 9)),
           ],
         );
       }),
     );
   }
 
-  Widget _buildScanView() => Column(
+  Widget _buildScanView(AC ac) => Column(
     children: [
       if (_isScanning)
-        _infoCard(Icons.bluetooth_searching_rounded, 'Scanning...', 'Looking for ESP32 devices', AppColors.info, showProgress: true)
+        _infoCard(ac, Icons.bluetooth_searching_rounded, 'Scanning...', 'Looking for ESP32 devices', AppColors.info, showProgress: true)
       else if (_scanResults.isEmpty)
-        _infoCard(Icons.bluetooth_disabled_rounded, 'No devices found', 'Make sure ESP32 is powered on\nand in pairing mode (LED blinking)', AppColors.warning,
+        _infoCard(ac, Icons.bluetooth_disabled_rounded, 'No devices found', 'Make sure ESP32 is powered on\nand in pairing mode (LED blinking)', AppColors.warning,
           action: TextButton.icon(onPressed: _startScan, icon: const Icon(Icons.refresh_rounded, size: 16), label: const Text('Scan Again')),
         ),
       if (_scanResults.isNotEmpty) ...[
         const SizedBox(height: 8),
-        ..._scanResults.map((r) => _deviceTile(r)),
+        ..._scanResults.map((r) => _deviceTile(ac, r)),
       ],
     ],
   );
 
-  Widget _deviceTile(ScanResult r) => Container(
+  Widget _deviceTile(AC ac, ScanResult r) => Container(
     margin: const EdgeInsets.only(bottom: 10),
-    decoration: BoxDecoration(color: AppColors.card, borderRadius: BorderRadius.circular(18), border: Border.all(color: Colors.white10)),
+    decoration: BoxDecoration(color: ac.card, borderRadius: BorderRadius.circular(18), border: Border.all(color: ac.border)),
     child: ListTile(
-      leading: Container(padding: const EdgeInsets.all(8), decoration: BoxDecoration(color: AppColors.accentDim, borderRadius: BorderRadius.circular(10)), child: const Icon(Icons.developer_board_rounded, color: AppColors.accentLight, size: 20)),
-      title: Text(r.device.platformName.isEmpty ? 'Unknown Device' : r.device.platformName, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
+      leading: Container(padding: const EdgeInsets.all(8), decoration: BoxDecoration(color: ac.accentDim, borderRadius: BorderRadius.circular(10)), child: Icon(Icons.developer_board_rounded, color: ac.accentLight, size: 20)),
+      title: Text(r.device.platformName.isEmpty ? 'Unknown Device' : r.device.platformName, style: TextStyle(color: ac.textPrimary, fontWeight: FontWeight.w600)),
       subtitle: Text('${r.rssi} dBm · ${_signalLabel(r.rssi)}', style: TextStyle(color: _signalColor(r.rssi), fontSize: 11)),
-      trailing: const Icon(Icons.arrow_forward_ios_rounded, color: Colors.white38, size: 14),
+      trailing: Icon(Icons.arrow_forward_ios_rounded, color: ac.iconMuted, size: 14),
       onTap: () => _connectToDevice(r.device),
     ),
   );
 
-  Widget _buildConnectingView() => _infoCard(Icons.bluetooth_connected_rounded, 'Connecting...', 'Establishing BLE connection', AppColors.info, showProgress: true);
+  Widget _buildConnectingView(AC ac) => _infoCard(ac, Icons.bluetooth_connected_rounded, 'Connecting...', 'Establishing BLE connection', AppColors.info, showProgress: true);
 
-  Widget _buildWiFiListView() => Column(
+  Widget _buildWiFiListView(AC ac) => Column(
     crossAxisAlignment: CrossAxisAlignment.start,
     children: [
-      _infoCard(Icons.check_circle_rounded, 'Connected: ${_connectedDevice?.platformName ?? ""}', 'Select a WiFi network for ESP32', AppColors.success),
+      _infoCard(ac, Icons.check_circle_rounded, 'Connected: ${_connectedDevice?.platformName ?? ""}', 'Select a WiFi network for ESP32', AppColors.success),
       const SizedBox(height: 20),
-      const Text('Available Networks', style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
+      Text('Available Networks', style: TextStyle(color: ac.textPrimary, fontSize: 16, fontWeight: FontWeight.bold)),
       const SizedBox(height: 12),
       if (_wifiNetworks.isEmpty)
         _infoCard(
-          Icons.wifi_find_rounded, 
-          'Scanning WiFi...', 
-          'If no networks appear (e.g., on iOS), please enter manually below.', 
-          AppColors.warning, 
+          ac, Icons.wifi_find_rounded,
+          'Scanning WiFi...',
+          'If no networks appear (e.g., on iOS), please enter manually below.',
+          AppColors.warning,
           showProgress: true
         )
       else
-        ..._wifiNetworks.take(12).map(_wifiTile),
+        ..._wifiNetworks.take(12).map((n) => _wifiTile(ac, n)),
       const SizedBox(height: 12),
-      _manualEntryTile(),
+      _manualEntryTile(ac),
     ],
   );
 
-  Widget _wifiTile(MyWiFiNetwork n) => Container(
+  Widget _wifiTile(AC ac, MyWiFiNetwork n) => Container(
     margin: const EdgeInsets.only(bottom: 8),
-    decoration: BoxDecoration(color: AppColors.card, borderRadius: BorderRadius.circular(16), border: Border.all(color: Colors.white10)),
+    decoration: BoxDecoration(color: ac.card, borderRadius: BorderRadius.circular(16), border: Border.all(color: ac.border)),
     child: ListTile(
       leading: Icon(_wifiIcon(n.level), color: _signalColor(n.level), size: 22),
-      title: Text(n.ssid, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w500, fontSize: 14)),
-      subtitle: Text('${_signalLabel(n.level)} · ${_securityLabel(n.capabilities)}', style: const TextStyle(color: AppColors.textSecondary, fontSize: 11)),
-      trailing: const Icon(Icons.arrow_forward_ios_rounded, color: Colors.white38, size: 14),
+      title: Text(n.ssid, style: TextStyle(color: ac.textPrimary, fontWeight: FontWeight.w500, fontSize: 14)),
+      subtitle: Text('${_signalLabel(n.level)} · ${_securityLabel(n.capabilities)}', style: TextStyle(color: ac.textSecondary, fontSize: 11)),
+      trailing: Icon(Icons.arrow_forward_ios_rounded, color: ac.iconMuted, size: 14),
       onTap: () => _selectWiFi(n),
     ),
   );
 
-  Widget _manualEntryTile() => Container(
-    decoration: BoxDecoration(color: AppColors.card, borderRadius: BorderRadius.circular(16), border: Border.all(color: Colors.white10)),
+  Widget _manualEntryTile(AC ac) => Container(
+    decoration: BoxDecoration(color: ac.card, borderRadius: BorderRadius.circular(16), border: Border.all(color: ac.border)),
     child: ListTile(
-      leading: Container(padding: const EdgeInsets.all(6), decoration: BoxDecoration(color: Colors.white12, borderRadius: BorderRadius.circular(8)), child: const Icon(Icons.more_horiz_rounded, color: Colors.white60, size: 18)),
-      title: const Text('Other...', style: TextStyle(color: Colors.white70, fontWeight: FontWeight.w500)),
-      subtitle: const Text('Enter network name manually', style: TextStyle(color: AppColors.textSecondary, fontSize: 11)),
-      trailing: const Icon(Icons.arrow_forward_ios_rounded, color: Colors.white38, size: 14),
+      leading: Container(padding: const EdgeInsets.all(6), decoration: BoxDecoration(color: ac.border, borderRadius: BorderRadius.circular(8)), child: Icon(Icons.more_horiz_rounded, color: ac.iconMuted, size: 18)),
+      title: Text('Other...', style: TextStyle(color: ac.textSecondary, fontWeight: FontWeight.w500)),
+      subtitle: Text('Enter network name manually', style: TextStyle(color: ac.textSecondary, fontSize: 11)),
+      trailing: Icon(Icons.arrow_forward_ios_rounded, color: ac.iconMuted, size: 14),
       onTap: () => setState(() { _selectedSSID = null; _ssidCtrl.clear(); _step = 4; }),
     ),
   );
 
-  Widget _buildVerifyingView() => Column(
+  Widget _buildVerifyingView(AC ac) => Column(
     children: [
-      _infoCard(Icons.wifi_find_rounded, 'Verifying WiFi', 'Checking if ESP32 can see "$_selectedSSID"', AppColors.info, showProgress: true),
+      _infoCard(ac, Icons.wifi_find_rounded, 'Verifying WiFi', 'Checking if ESP32 can see "$_selectedSSID"', AppColors.info, showProgress: true),
       const SizedBox(height: 12),
-      TextButton(onPressed: () => setState(() => _step = 4), child: const Text('Skip verification', style: TextStyle(color: AppColors.textSecondary))),
+      TextButton(onPressed: () => setState(() => _step = 4), child: Text('Skip verification', style: TextStyle(color: ac.textSecondary))),
     ],
   );
 
-  Widget _buildPasswordView() => Column(
+  Widget _buildPasswordView(AC ac) => Column(
     crossAxisAlignment: CrossAxisAlignment.start,
     children: [
       if (_selectedSSID != null)
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           margin: const EdgeInsets.only(bottom: 16),
-          decoration: BoxDecoration(color: AppColors.accentDim, borderRadius: BorderRadius.circular(16)),
+          decoration: BoxDecoration(color: ac.accentDim, borderRadius: BorderRadius.circular(16)),
           child: Row(
             children: [
-              const Icon(Icons.wifi_rounded, color: AppColors.accentLight, size: 18),
+              Icon(Icons.wifi_rounded, color: ac.accentLight, size: 18),
               const SizedBox(width: 10),
-              Expanded(child: Text(_selectedSSID!, style: const TextStyle(color: AppColors.accentLight, fontWeight: FontWeight.bold))),
-              GestureDetector(onTap: () => setState(() => _step = 2), child: const Text('Change', style: TextStyle(color: AppColors.textSecondary, fontSize: 12))),
+              Expanded(child: Text(_selectedSSID!, style: TextStyle(color: ac.accentLight, fontWeight: FontWeight.bold))),
+              GestureDetector(onTap: () => setState(() => _step = 2), child: Text('Change', style: TextStyle(color: ac.textSecondary, fontSize: 12))),
             ],
           ),
         ),
       if (_selectedSSID == null)
-        _textField(_ssidCtrl, 'WiFi Name (SSID)', Icons.wifi_rounded),
+        _textField(ac, _ssidCtrl, 'WiFi Name (SSID)', Icons.wifi_rounded),
       const SizedBox(height: 12),
-      _textField(_passCtrl, 'Password', Icons.lock_rounded, obscure: _obscurePass,
-        suffix: IconButton(icon: Icon(_obscurePass ? Icons.visibility_rounded : Icons.visibility_off_rounded, size: 18), color: AppColors.textSecondary, onPressed: () => setState(() => _obscurePass = !_obscurePass)),
+      _textField(ac, _passCtrl, 'Password', Icons.lock_rounded, obscure: _obscurePass,
+        suffix: IconButton(icon: Icon(_obscurePass ? Icons.visibility_rounded : Icons.visibility_off_rounded, size: 18), color: ac.textSecondary, onPressed: () => setState(() => _obscurePass = !_obscurePass)),
       ),
       const SizedBox(height: 24),
       SizedBox(
@@ -504,8 +492,8 @@ class _BLEWiFiProvisioningScreenState extends State<BLEWiFiProvisioningScreen> {
         child: ElevatedButton(
           onPressed: _isConfiguring ? null : _sendWiFiConfig,
           style: ElevatedButton.styleFrom(
-            backgroundColor: AppColors.accent,
-            disabledBackgroundColor: AppColors.accentDim,
+            backgroundColor: ac.accent,
+            disabledBackgroundColor: ac.accentDim,
             padding: const EdgeInsets.symmetric(vertical: 16),
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
           ),
@@ -521,12 +509,11 @@ class _BLEWiFiProvisioningScreenState extends State<BLEWiFiProvisioningScreen> {
     ],
   );
 
-  Widget _buildDoneView() => _infoCard(
-    Icons.check_circle_rounded, 'Connected!', 'ESP32 IP: $_esp32IP\nClosing automatically...', AppColors.success,
+  Widget _buildDoneView(AC ac) => _infoCard(
+    ac, Icons.check_circle_rounded, 'Connected!', 'ESP32 IP: $_esp32IP\nClosing automatically...', AppColors.success,
   );
 
-  // ── Helpers ───────────────────────────────────────────────────────────────
-  Widget _infoCard(IconData icon, String title, String subtitle, Color color, {bool showProgress = false, Widget? action}) {
+  Widget _infoCard(AC ac, IconData icon, String title, String subtitle, Color color, {bool showProgress = false, Widget? action}) {
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
@@ -546,26 +533,26 @@ class _BLEWiFiProvisioningScreenState extends State<BLEWiFiProvisioningScreen> {
             ],
           ),
           const SizedBox(height: 8),
-          Text(subtitle, style: const TextStyle(color: AppColors.textSecondary, fontSize: 12, height: 1.5)),
+          Text(subtitle, style: TextStyle(color: ac.textSecondary, fontSize: 12, height: 1.5)),
           if (action != null) ...[const SizedBox(height: 12), action],
         ],
       ),
     );
   }
 
-  Widget _textField(TextEditingController ctrl, String label, IconData icon, {bool obscure = false, Widget? suffix}) => TextField(
+  Widget _textField(AC ac, TextEditingController ctrl, String label, IconData icon, {bool obscure = false, Widget? suffix}) => TextField(
     controller: ctrl,
     obscureText: obscure,
-    style: const TextStyle(color: Colors.white),
+    style: TextStyle(color: ac.textPrimary),
     decoration: InputDecoration(
       labelText: label,
-      labelStyle: const TextStyle(color: AppColors.textSecondary),
-      prefixIcon: Icon(icon, color: AppColors.textSecondary, size: 18),
+      labelStyle: TextStyle(color: ac.textSecondary),
+      prefixIcon: Icon(icon, color: ac.textSecondary, size: 18),
       suffixIcon: suffix,
       filled: true,
-      fillColor: AppColors.card,
-      enabledBorder: OutlineInputBorder(borderSide: const BorderSide(color: Colors.white24), borderRadius: BorderRadius.circular(14)),
-      focusedBorder: OutlineInputBorder(borderSide: const BorderSide(color: AppColors.accentLight), borderRadius: BorderRadius.circular(14)),
+      fillColor: ac.card,
+      enabledBorder: OutlineInputBorder(borderSide: BorderSide(color: ac.border), borderRadius: BorderRadius.circular(14)),
+      focusedBorder: OutlineInputBorder(borderSide: BorderSide(color: ac.accentLight), borderRadius: BorderRadius.circular(14)),
     ),
   );
 

@@ -49,8 +49,9 @@ class _LoginScreenState extends State<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final ac = AC.of(context);
     return Scaffold(
-      backgroundColor: AppColors.bg,
+      backgroundColor: ac.bg,
       body: SafeArea(
         child: SingleChildScrollView(
           padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 32),
@@ -106,7 +107,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   suffix: IconButton(
                     icon: Icon(
                       _obscure ? Icons.visibility_outlined : Icons.visibility_off_outlined,
-                      color: AppColors.textSecondary, size: 20,
+                      color: ac.textSecondary, size: 20,
                     ),
                     onPressed: () => setState(() => _obscure = !_obscure),
                   ),
@@ -123,15 +124,15 @@ class _LoginScreenState extends State<LoginScreen> {
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                     decoration: BoxDecoration(
-                      color: AppColors.error.withOpacity(0.12),
+                      color: ac.error.withOpacity(0.12),
                       borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: AppColors.error.withOpacity(0.4)),
+                      border: Border.all(color: ac.error.withOpacity(0.4)),
                     ),
                     child: Row(children: [
-                      const Icon(Icons.error_outline, color: AppColors.error, size: 18),
+                      Icon(Icons.error_outline, color: ac.error, size: 18),
                       const SizedBox(width: 8),
                       Expanded(child: Text(_error!,
-                          style: const TextStyle(color: AppColors.error, fontSize: 13))),
+                          style: TextStyle(color: ac.error, fontSize: 13))),
                     ]),
                   ),
                 ],
@@ -145,7 +146,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   child: ElevatedButton(
                     onPressed: _loading ? null : _submit,
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: AppColors.accent,
+                      backgroundColor: ac.accent,
                       foregroundColor: Colors.white,
                       shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(16)),
@@ -169,9 +170,9 @@ class _LoginScreenState extends State<LoginScreen> {
                   GestureDetector(
                     onTap: () => Navigator.push(context,
                         MaterialPageRoute(builder: (_) => const RegisterScreen())),
-                    child: const Text('Đăng ký',
+                    child: Text('Đăng ký',
                         style: TextStyle(
-                            color: AppColors.accent,
+                            color: ac.accent,
                             fontWeight: FontWeight.bold,
                             fontSize: 14)),
                   ),
@@ -184,12 +185,15 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
-  Widget _label(String text) => Text(text,
-      style: const TextStyle(
-          color: AppColors.textSecondary,
-          fontSize: 13,
-          fontWeight: FontWeight.w600,
-          letterSpacing: 0.5));
+  Widget _label(String text) {
+    final ac = AC.of(context);
+    return Text(text,
+        style: TextStyle(
+            color: ac.textSecondary,
+            fontSize: 13,
+            fontWeight: FontWeight.w600,
+            letterSpacing: 0.5));
+  }
 
   Widget _inputField({
     required TextEditingController controller,
@@ -200,34 +204,35 @@ class _LoginScreenState extends State<LoginScreen> {
     TextInputType? keyboardType,
     String? Function(String?)? validator,
   }) {
+    final ac = AC.of(context);
     return TextFormField(
       controller: controller,
       obscureText: obscure,
       keyboardType: keyboardType,
-      style: const TextStyle(color: AppColors.textPrimary, fontSize: 15),
+      style: TextStyle(color: ac.textPrimary, fontSize: 15),
       validator: validator,
       decoration: InputDecoration(
         hintText: hint,
-        hintStyle: const TextStyle(color: AppColors.textDim, fontSize: 14),
-        prefixIcon: Icon(icon, color: AppColors.textSecondary, size: 20),
+        hintStyle: TextStyle(color: ac.textDim, fontSize: 14),
+        prefixIcon: Icon(icon, color: ac.textSecondary, size: 20),
         suffixIcon: suffix,
         filled: true,
-        fillColor: AppColors.card,
+        fillColor: ac.card,
         border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(14),
             borderSide: BorderSide.none),
         enabledBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(14),
-            borderSide: BorderSide(color: Colors.white10)),
+            borderSide: BorderSide(color: ac.divider)),
         focusedBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(14),
-            borderSide: const BorderSide(color: AppColors.accent, width: 1.5)),
+            borderSide: BorderSide(color: ac.accent, width: 1.5)),
         errorBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(14),
-            borderSide: const BorderSide(color: AppColors.error)),
+            borderSide: BorderSide(color: ac.error)),
         focusedErrorBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(14),
-            borderSide: const BorderSide(color: AppColors.error, width: 1.5)),
+            borderSide: BorderSide(color: ac.error, width: 1.5)),
         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
       ),
     );

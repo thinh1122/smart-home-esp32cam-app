@@ -17,7 +17,6 @@ class MainScreen extends StatefulWidget {
 class _MainScreenState extends State<MainScreen> {
   int _currentIndex = 0;
 
-  // Cho phép widget con switch tab (bell icon ở Home)
   void switchTab(int index) {
     if (mounted) setState(() => _currentIndex = index);
   }
@@ -38,20 +37,21 @@ class _MainScreenState extends State<MainScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final ac = AC.of(context);
     return Scaffold(
-      backgroundColor: AppColors.bg,
+      backgroundColor: ac.bg,
       body: IndexedStack(index: _currentIndex, children: _pages),
-      bottomNavigationBar: _buildBottomNav(),
+      bottomNavigationBar: _buildBottomNav(ac),
     );
   }
 
-  Widget _buildBottomNav() {
+  Widget _buildBottomNav(AC ac) {
     return Container(
       decoration: BoxDecoration(
-        color: AppColors.card,
-        border: const Border(top: BorderSide(color: Colors.white10, width: 0.5)),
+        color: ac.card,
+        border: Border(top: BorderSide(color: ac.divider, width: 0.5)),
         boxShadow: [
-          BoxShadow(color: Colors.black.withOpacity(0.4), blurRadius: 16, offset: const Offset(0, -4)),
+          BoxShadow(color: ac.shadowColor, blurRadius: 16, offset: const Offset(0, -4)),
         ],
       ),
       child: SafeArea(
@@ -59,23 +59,22 @@ class _MainScreenState extends State<MainScreen> {
           padding: const EdgeInsets.symmetric(vertical: 8),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceAround,
-            children: List.generate(_tabs.length, (i) => _buildNavItem(i)),
+            children: List.generate(_tabs.length, (i) => _buildNavItem(i, ac)),
           ),
         ),
       ),
     );
   }
 
-  Widget _buildNavItem(int index) {
-    final isActive    = _currentIndex == index;
-    final tab         = _tabs[index];
-    final isNotifTab  = index == 2;
+  Widget _buildNavItem(int index, AC ac) {
+    final isActive   = _currentIndex == index;
+    final tab        = _tabs[index];
+    final isNotifTab = index == 2;
 
     return GestureDetector(
       onTap: () {
         setState(() => _currentIndex = index);
         if (isNotifTab) AppNotificationService.instance.markAllRead();
-        // Mỗi lần bấm Home hoặc Devices → trigger reload DB
         if (index == 0 || index == 1) {
           DatabaseHelper.deviceListNotifier.value++;
         }
@@ -85,21 +84,21 @@ class _MainScreenState extends State<MainScreen> {
         duration: const Duration(milliseconds: 200),
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         decoration: BoxDecoration(
-          color: isActive ? AppColors.accentDim : Colors.transparent,
+          color: isActive ? ac.accentDim : Colors.transparent,
           borderRadius: BorderRadius.circular(16),
         ),
         child: isNotifTab
-            ? _buildNotifIcon(isActive)
+            ? _buildNotifIcon(isActive, ac)
             : Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Icon(tab.icon,
-                      color: isActive ? AppColors.accentLight : AppColors.textSecondary,
+                      color: isActive ? ac.accentLight : ac.textSecondary,
                       size: 22),
                   const SizedBox(height: 4),
                   Text(tab.label,
                       style: TextStyle(
-                        color: isActive ? AppColors.accentLight : AppColors.textSecondary,
+                        color: isActive ? ac.accentLight : ac.textSecondary,
                         fontSize: 10,
                         fontWeight: isActive ? FontWeight.bold : FontWeight.normal,
                       )),
@@ -109,7 +108,7 @@ class _MainScreenState extends State<MainScreen> {
     );
   }
 
-  Widget _buildNotifIcon(bool isActive) {
+  Widget _buildNotifIcon(bool isActive, AC ac) {
     return ListenableBuilder(
       listenable: AppNotificationService.instance,
       builder: (_, __) {
@@ -125,16 +124,16 @@ class _MainScreenState extends State<MainScreen> {
                       ? Icons.notifications_active_rounded
                       : Icons.notifications_rounded,
                   color: isActive
-                      ? AppColors.accentLight
+                      ? ac.accentLight
                       : count > 0
                           ? Colors.orangeAccent
-                          : AppColors.textSecondary,
+                          : ac.textSecondary,
                   size: 22,
                 ),
                 const SizedBox(height: 4),
                 Text('Thông báo',
                     style: TextStyle(
-                      color: isActive ? AppColors.accentLight : AppColors.textSecondary,
+                      color: isActive ? ac.accentLight : ac.textSecondary,
                       fontSize: 10,
                       fontWeight: isActive ? FontWeight.bold : FontWeight.normal,
                     )),
