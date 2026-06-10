@@ -444,7 +444,7 @@ void setup() {
   loadAndConnect();
 
   if (WiFi.status() == WL_CONNECTED) {
-    wifiClient.setInsecure();  // dùng TLS không xác minh CA cert
+    wifiClient.setInsecure();
     mqtt.setServer(MQTT_BROKER, MQTT_PORT);
     mqtt.setCallback(onMqttMessage);
     mqtt.setKeepAlive(60);

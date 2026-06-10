@@ -9,7 +9,32 @@
       "Bash(git push *)",
       "Bash(xargs grep *)",
       "Bash(git restore *)",
-      "Bash(git commit --allow-empty -m ' *)"
+      "Bash(git commit --allow-empty -m ' *)",
+      "Bash(python -c ' *)",
+      "PowerShell(pip install gevent gevent-websocket 2>&1)",
+      "PowerShell(tail -5)",
+      "PowerShell(pip install gevent)",
+      "Bash(git remote *)",
+      "Bash(echo \"exit: $?\")",
+      "Bash(gh run *)",
+      "Bash(git commit *)",
+      "Bash(netstat -ano)",
+      "PowerShell(Get-Process | Where-Object {$_.Name -match \"vpn|proxy|clash|v2ray|xray|surge|shadowsocks|trojan|sing-box\"} | Select-Object Name, Id)",
+      "PowerShell(netstat -ano)",
+      "PowerShell(Get-Process -Id 2184)",
+      "PowerShell(Get-WmiObject Win32_Process -Filter \"ProcessId=2184\")",
+      "Bash(git submodule *)",
+      "Bash(python benchmark_ai.py)",
+      "Bash(flutter pub *)",
+      "Bash(flutter analyze *)",
+      "PowerShell(Get-Command mosquitto_pub -ErrorAction SilentlyContinue)",
+      "PowerShell(Get-Command mosquitto_sub -ErrorAction SilentlyContinue)",
+      "Bash(Remove-Item -Recurse -Force \"C:\\\\Users\\\\DELL\\\\AndroidStudioProjects\\\\DATN\\\\MIC\")",
+      "Bash(dir \"c:\\\\Users\\\\DELL\\\\AndroidStudioProjects\\\\DATN\")",
+      "Bash(rm -rf \"C:/Users/DELL/AppData/Local/arduino/sketches/\" \"C:/Users/DELL/AppData/Local/arduino/cores/\")"
+    ],
+    "additionalDirectories": [
+      "C:\\Users\\DELL\\AppData\\Local\\arduino\\sketches"
     ]
   }
 }
