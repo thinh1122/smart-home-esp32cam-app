@@ -15,7 +15,13 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # 2. Setup Flutter
+      # 2. Switch to Xcode 15
+      - name: Select Xcode 15
+        run: |
+          sudo xcode-select -s /Applications/Xcode_15.4.app/Contents/Developer
+          xcodebuild -version
+
+      # 3. Setup Flutter
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
@@ -23,21 +29,10 @@ jobs:
           channel: 'stable'
           cache: true
 
-      # 3. Flutter pub get
+      # 4. Flutter pub get
       - name: Flutter pub get
         working-directory: FLUTTER
         run: flutter pub get
-
-      # 4. Debug: find Flutter tool location and the exact file with signing check
-      - name: Debug Flutter location
-        run: |
-          which flutter
-          flutter --version
-          FLUTTER_HOME=$(flutter --version --machine 2>/dev/null | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('flutterRoot',''))" 2>/dev/null || dirname $(dirname $(which flutter)))
-          echo "Flutter home: $FLUTTER_HOME"
-          find "$FLUTTER_HOME" -name "*.dart" 2>/dev/null | xargs grep -l "requires a selected Development Team" 2>/dev/null || echo "NOT FOUND in dart files"
-          find "$FLUTTER_HOME" -name "*.snapshot" 2>/dev/null | head -5
-          ls "$FLUTTER_HOME/packages/flutter_tools/lib/src/ios/" 2>/dev/null || echo "ios dir not found"
 
       # 5. Build iOS (no codesign)
       - name: Build iOS (no-codesign)
@@ -46,7 +41,7 @@ jobs:
           flutter build ios --release --no-codesign
           echo "Build done"
 
-      # 5. Tạo Payload folder và đóng gói .ipa
+      # 6. Tạo Payload folder và đóng gói .ipa
       - name: Package IPA
         working-directory: FLUTTER
         run: |
@@ -56,7 +51,7 @@ jobs:
           zip -r SmartHome.ipa Payload
           echo "IPA created"
 
-      # 6. Upload artifact (tải về từ GitHub Actions)
+      # 7. Upload artifact
       - name: Upload IPA
         uses: actions/upload-artifact@v4
         with:
