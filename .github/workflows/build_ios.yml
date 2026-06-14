@@ -18,7 +18,14 @@ jobs:
       # 2. Switch to Xcode 15
       - name: Select Xcode 15
         run: |
-          sudo xcode-select -s /Applications/Xcode_15.4.app/Contents/Developer
+          ls /Applications/ | grep Xcode
+          XCODE15=$(ls /Applications/ | grep "Xcode_15" | head -1)
+          if [ -n "$XCODE15" ]; then
+            sudo xcode-select -s /Applications/$XCODE15/Contents/Developer
+          else
+            XCODE15=$(ls /Applications/ | grep "Xcode" | grep -v "16" | head -1)
+            sudo xcode-select -s /Applications/$XCODE15/Contents/Developer
+          fi
           xcodebuild -version
 
       # 3. Setup Flutter
