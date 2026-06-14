@@ -169,7 +169,6 @@ class AppTheme {
       contentTextStyle: TextStyle(color: AppColors.textPrimary),
     ),
     dividerColor: Colors.white10,
-    useMaterial3: true,
   );
 }
 
