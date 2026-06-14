@@ -11,24 +11,9 @@ jobs:
     timeout-minutes: 60
 
     steps:
-      # 1. Checkout code
       - name: Checkout
         uses: actions/checkout@v4
 
-      # 2. Switch to Xcode 15
-      - name: Select Xcode 15
-        run: |
-          ls /Applications/ | grep Xcode
-          XCODE15=$(ls /Applications/ | grep "Xcode_15" | head -1)
-          if [ -n "$XCODE15" ]; then
-            sudo xcode-select -s /Applications/$XCODE15/Contents/Developer
-          else
-            XCODE15=$(ls /Applications/ | grep "Xcode" | grep -v "16" | head -1)
-            sudo xcode-select -s /Applications/$XCODE15/Contents/Developer
-          fi
-          xcodebuild -version
-
-      # 3. Setup Flutter
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
@@ -36,32 +21,47 @@ jobs:
           channel: 'stable'
           cache: true
 
-      # 4. Flutter pub get
       - name: Flutter pub get
         working-directory: FLUTTER
         run: flutter pub get
 
-      # 5. Build iOS (no codesign)
-      - name: Build iOS (no-codesign)
+      - name: Flutter gen files
         working-directory: FLUTTER
+        run: flutter build ios --release --no-codesign --config-only || true
+
+      - name: Pod install
+        working-directory: FLUTTER/ios
+        run: pod install --repo-update
+
+      - name: Build iOS via xcodebuild (no-codesign)
+        working-directory: FLUTTER/ios
         run: |
-          flutter build ios --release --no-codesign
+          xcodebuild \
+            -workspace Runner.xcworkspace \
+            -scheme Runner \
+            -configuration Release \
+            -sdk iphoneos \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            DEVELOPMENT_TEAM="" \
+            -derivedDataPath build \
+            build
           echo "Build done"
 
-      # 6. Tạo Payload folder và đóng gói .ipa
       - name: Package IPA
-        working-directory: FLUTTER
+        working-directory: FLUTTER/ios
         run: |
-          mkdir -p build/ios/iphoneos/Payload
-          cp -r build/ios/iphoneos/Runner.app build/ios/iphoneos/Payload/
-          cd build/ios/iphoneos
+          APP_PATH=$(find build -name "Runner.app" -not -path "*/Build/Intermediates*" | head -1)
+          echo "Found app: $APP_PATH"
+          mkdir -p Payload
+          cp -r "$APP_PATH" Payload/
           zip -r SmartHome.ipa Payload
           echo "IPA created"
 
-      # 7. Upload artifact
       - name: Upload IPA
         uses: actions/upload-artifact@v4
         with:
           name: SmartHome-iOS
-          path: FLUTTER/build/ios/iphoneos/SmartHome.ipa
+          path: FLUTTER/ios/SmartHome.ipa
           retention-days: 7
