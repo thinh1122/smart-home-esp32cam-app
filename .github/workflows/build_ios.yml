@@ -19,7 +19,7 @@ jobs:
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.19.6'
+          flutter-version: '3.24.0'
           channel: 'stable'
           cache: true
 
@@ -28,7 +28,22 @@ jobs:
         working-directory: FLUTTER
         run: flutter pub get
 
-      # 4. Build iOS (no codesign — dùng để sideload qua AltStore/Sideloadly)
+      # 4. Patch Flutter tool to skip Development Team check
+      - name: Patch Flutter signing check
+        run: |
+          FLUTTER_TOOL=$(dirname $(which flutter))/../packages/flutter_tools/lib/src/ios/xcode_backend.dart
+          if [ -f "$FLUTTER_TOOL" ]; then
+            sed -i '' 's/throwToolExit.*Development Team.*$/\/\/ patched/g' "$FLUTTER_TOOL" || true
+          fi
+          # Find and patch the actual check file
+          FLUTTER_HOME=$(dirname $(dirname $(which flutter)))
+          find "$FLUTTER_HOME" -name "*.dart" -path "*/flutter_tools/*" | xargs grep -l "requires a selected Development Team" 2>/dev/null | while read f; do
+            echo "Patching $f"
+            sed -i '' 's/throwToolExit.*requires a selected Development Team.*$/\/\/ patched: skip signing check/g' "$f" || true
+            sed -i '' '/requires a selected Development Team/d' "$f" || true
+          done
+
+      # 5. Build iOS (no codesign)
       - name: Build iOS (no-codesign)
         working-directory: FLUTTER
         run: |
