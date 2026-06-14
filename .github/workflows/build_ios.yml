@@ -7,15 +7,18 @@ on:
 
 jobs:
   build-ios:
-    runs-on: macos-latest
+    runs-on: macos-13
     timeout-minutes: 60
 
     steps:
-      # 1. Checkout code
       - name: Checkout
         uses: actions/checkout@v4
 
-      # 2. Setup Flutter
+      - name: Select Xcode 15.2
+        run: |
+          sudo xcode-select -s /Applications/Xcode_15.2.app/Contents/Developer
+          xcodebuild -version
+
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
@@ -23,19 +26,16 @@ jobs:
           channel: 'stable'
           cache: true
 
-      # 3. Flutter pub get
       - name: Flutter pub get
         working-directory: FLUTTER
         run: flutter pub get
 
-      # 4. Build iOS (no codesign — dùng để sideload qua AltStore/Sideloadly)
       - name: Build iOS (no-codesign)
         working-directory: FLUTTER
         run: |
           flutter build ios --release --no-codesign
           echo "Build done"
 
-      # 5. Tạo Payload folder và đóng gói .ipa
       - name: Package IPA
         working-directory: FLUTTER
         run: |
@@ -45,7 +45,6 @@ jobs:
           zip -r SmartHome.ipa Payload
           echo "IPA created"
 
-      # 6. Upload artifact (tải về từ GitHub Actions)
       - name: Upload IPA
         uses: actions/upload-artifact@v4
         with:
