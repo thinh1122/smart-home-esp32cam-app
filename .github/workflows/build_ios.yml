@@ -25,15 +25,6 @@ jobs:
         working-directory: FLUTTER
         run: flutter pub get
 
-      - name: Patch Xcode signing
-        working-directory: FLUTTER/ios
-        run: |
-          sed -i '' \
-            -e 's/DEVELOPMENT_TEAM = [A-Z0-9]*;/DEVELOPMENT_TEAM = "";/g' \
-            -e 's/CODE_SIGN_STYLE = Automatic;/CODE_SIGN_STYLE = Manual;/g' \
-            Runner.xcodeproj/project.pbxproj
-          grep "DEVELOPMENT_TEAM\|CODE_SIGN_STYLE" Runner.xcodeproj/project.pbxproj
-
       - name: Build iOS (no-codesign)
         working-directory: FLUTTER
         run: |
