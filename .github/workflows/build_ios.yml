@@ -28,20 +28,16 @@ jobs:
         working-directory: FLUTTER
         run: flutter pub get
 
-      # 4. Patch Flutter tool to skip Development Team check
-      - name: Patch Flutter signing check
+      # 4. Debug: find Flutter tool location and the exact file with signing check
+      - name: Debug Flutter location
         run: |
-          FLUTTER_TOOL=$(dirname $(which flutter))/../packages/flutter_tools/lib/src/ios/xcode_backend.dart
-          if [ -f "$FLUTTER_TOOL" ]; then
-            sed -i '' 's/throwToolExit.*Development Team.*$/\/\/ patched/g' "$FLUTTER_TOOL" || true
-          fi
-          # Find and patch the actual check file
-          FLUTTER_HOME=$(dirname $(dirname $(which flutter)))
-          find "$FLUTTER_HOME" -name "*.dart" -path "*/flutter_tools/*" | xargs grep -l "requires a selected Development Team" 2>/dev/null | while read f; do
-            echo "Patching $f"
-            sed -i '' 's/throwToolExit.*requires a selected Development Team.*$/\/\/ patched: skip signing check/g' "$f" || true
-            sed -i '' '/requires a selected Development Team/d' "$f" || true
-          done
+          which flutter
+          flutter --version
+          FLUTTER_HOME=$(flutter --version --machine 2>/dev/null | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('flutterRoot',''))" 2>/dev/null || dirname $(dirname $(which flutter)))
+          echo "Flutter home: $FLUTTER_HOME"
+          find "$FLUTTER_HOME" -name "*.dart" 2>/dev/null | xargs grep -l "requires a selected Development Team" 2>/dev/null || echo "NOT FOUND in dart files"
+          find "$FLUTTER_HOME" -name "*.snapshot" 2>/dev/null | head -5
+          ls "$FLUTTER_HOME/packages/flutter_tools/lib/src/ios/" 2>/dev/null || echo "ios dir not found"
 
       # 5. Build iOS (no codesign)
       - name: Build iOS (no-codesign)
