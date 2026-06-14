@@ -7,13 +7,15 @@ on:
 
 jobs:
   build-ios:
-    runs-on: macos-latest
+    runs-on: macos-13
     timeout-minutes: 60
 
     steps:
+      # 1. Checkout code
       - name: Checkout
         uses: actions/checkout@v4
 
+      # 2. Setup Flutter
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
@@ -21,47 +23,32 @@ jobs:
           channel: 'stable'
           cache: true
 
+      # 3. Flutter pub get
       - name: Flutter pub get
         working-directory: FLUTTER
         run: flutter pub get
 
-      - name: Flutter gen files
+      # 4. Build iOS (no codesign)
+      - name: Build iOS (no-codesign)
         working-directory: FLUTTER
-        run: flutter build ios --release --no-codesign --config-only || true
-
-      - name: Pod install
-        working-directory: FLUTTER/ios
-        run: pod install --repo-update
-
-      - name: Build iOS via xcodebuild (no-codesign)
-        working-directory: FLUTTER/ios
         run: |
-          xcodebuild \
-            -workspace Runner.xcworkspace \
-            -scheme Runner \
-            -configuration Release \
-            -sdk iphoneos \
-            CODE_SIGNING_ALLOWED=NO \
-            CODE_SIGN_IDENTITY="" \
-            CODE_SIGNING_REQUIRED=NO \
-            DEVELOPMENT_TEAM="" \
-            -derivedDataPath build \
-            build
+          flutter build ios --release --no-codesign
           echo "Build done"
 
+      # 5. Tạo Payload folder và đóng gói .ipa
       - name: Package IPA
-        working-directory: FLUTTER/ios
+        working-directory: FLUTTER
         run: |
-          APP_PATH=$(find build -name "Runner.app" -not -path "*/Build/Intermediates*" | head -1)
-          echo "Found app: $APP_PATH"
-          mkdir -p Payload
-          cp -r "$APP_PATH" Payload/
+          mkdir -p build/ios/iphoneos/Payload
+          cp -r build/ios/iphoneos/Runner.app build/ios/iphoneos/Payload/
+          cd build/ios/iphoneos
           zip -r SmartHome.ipa Payload
           echo "IPA created"
 
+      # 6. Upload artifact
       - name: Upload IPA
         uses: actions/upload-artifact@v4
         with:
           name: SmartHome-iOS
-          path: FLUTTER/ios/SmartHome.ipa
+          path: FLUTTER/build/ios/iphoneos/SmartHome.ipa
           retention-days: 7
