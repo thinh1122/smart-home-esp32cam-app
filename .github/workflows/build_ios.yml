@@ -11,11 +11,9 @@ jobs:
     timeout-minutes: 60
 
     steps:
-      # 1. Checkout code
       - name: Checkout
         uses: actions/checkout@v4
 
-      # 2. Setup Flutter
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
@@ -23,33 +21,25 @@ jobs:
           channel: 'stable'
           cache: true
 
-      # 3. Flutter pub get
       - name: Flutter pub get
         working-directory: FLUTTER
         run: flutter pub get
 
-      # 4. Patch pbxproj để tắt code signing hoàn toàn (Xcode 16 fix)
       - name: Patch Xcode signing
         working-directory: FLUTTER/ios
         run: |
-          plutil -replace TARGET_ATTRIBUTES -json '{}' Runner.xcodeproj/project.pbxproj 2>/dev/null || true
           sed -i '' \
             -e 's/DEVELOPMENT_TEAM = [A-Z0-9]*;/DEVELOPMENT_TEAM = "";/g' \
             -e 's/CODE_SIGN_STYLE = Automatic;/CODE_SIGN_STYLE = Manual;/g' \
             Runner.xcodeproj/project.pbxproj
           grep "DEVELOPMENT_TEAM\|CODE_SIGN_STYLE" Runner.xcodeproj/project.pbxproj
 
-      # 5. Build iOS (no codesign)
       - name: Build iOS (no-codesign)
         working-directory: FLUTTER
         run: |
-          flutter build ios --release --no-codesign \
-            DEVELOPMENT_TEAM="" \
-            CODE_SIGNING_ALLOWED=NO \
-            CODE_SIGNING_REQUIRED=NO
+          flutter build ios --release --no-codesign
           echo "Build done"
 
-      # 6. Tạo Payload folder và đóng gói .ipa
       - name: Package IPA
         working-directory: FLUTTER
         run: |
@@ -59,7 +49,6 @@ jobs:
           zip -r SmartHome.ipa Payload
           echo "IPA created"
 
-      # 7. Upload artifact
       - name: Upload IPA
         uses: actions/upload-artifact@v4
         with:
