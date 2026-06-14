@@ -27,23 +27,33 @@ jobs:
         working-directory: FLUTTER
         run: flutter pub get
 
-      - name: Disable code signing in Xcode project
+      - name: Generate iOS build files
+        working-directory: FLUTTER
+        run: flutter build ios --release --no-codesign --config-only
+
+      - name: Build iOS with xcodebuild (no codesign)
         working-directory: FLUTTER/ios
         run: |
-          # Tắt code signing hoàn toàn trong xcodeproj
-          sed -i '' 's/DEVELOPMENT_TEAM = [^;]*;/DEVELOPMENT_TEAM = "";/g' Runner.xcodeproj/project.pbxproj
-          sed -i '' 's/CODE_SIGN_STYLE = Automatic;/CODE_SIGN_STYLE = Manual;/g' Runner.xcodeproj/project.pbxproj
-          sed -i '' 's/CODE_SIGN_IDENTITY = ".*";/CODE_SIGN_IDENTITY = "";/g' Runner.xcodeproj/project.pbxproj
-
-      - name: Build iOS (no codesign)
-        working-directory: FLUTTER
-        run: flutter build ios --release --no-codesign
+          xcodebuild \
+            -workspace Runner.xcworkspace \
+            -scheme Runner \
+            -configuration Release \
+            -sdk iphoneos \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            DEVELOPMENT_TEAM="" \
+            PROVISIONING_PROFILE="" \
+            build
 
       - name: Package IPA
-        working-directory: FLUTTER
+        working-directory: FLUTTER/ios
         run: |
+          APP_PATH=$(find build -name "Runner.app" | head -1)
+          echo "Found app at: $APP_PATH"
           mkdir -p Payload
-          cp -r build/ios/iphoneos/Runner.app Payload/
+          cp -r "$APP_PATH" Payload/
           zip -r SmartHome.ipa Payload
           rm -rf Payload
 
@@ -51,7 +61,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: SmartHome-iOS-${{ github.run_number }}
-          path: FLUTTER/SmartHome.ipa
+          path: FLUTTER/ios/SmartHome.ipa
           retention-days: 30
 
       - name: Create GitHub Release
@@ -72,7 +82,7 @@ jobs:
             > IPA này **không có codesign** — phải dùng AltStore/Sideloadly để sign bằng Apple ID cá nhân
 
             ${{ github.event.head_commit.message }}
-          files: FLUTTER/SmartHome.ipa
+          files: FLUTTER/ios/SmartHome.ipa
           draft: false
           prerelease: false
         env:
