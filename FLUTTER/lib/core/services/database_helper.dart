@@ -176,6 +176,24 @@ class DatabaseHelper {
   }
 
   // ── Users ─────────────────────────────────────────────────
+  Future<void> ensureAdminAccount() async {
+    final db = await instance.database;
+    final existing = await db.query('users',
+        where: 'email = ?', whereArgs: ['admin@gmail.com'], limit: 1);
+    if (existing.isEmpty) {
+      await db.insert('users', {
+        'name': 'Admin',
+        'email': 'admin@gmail.com',
+        'password': 'ADMIN123',
+        'created_at': DateTime.now().toIso8601String(),
+      }, conflictAlgorithm: ConflictAlgorithm.ignore);
+    } else {
+      // Đảm bảo password luôn đúng
+      await db.update('users', {'password': 'ADMIN123'},
+          where: 'email = ?', whereArgs: ['admin@gmail.com']);
+    }
+  }
+
   Future<int> insertUser(String name, String email, String password) async {
     final db = await instance.database;
     return await db.insert('users', {

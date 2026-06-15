@@ -6,6 +6,7 @@ import 'core/services/notification_service.dart';
 import 'core/services/app_notification_service.dart';
 import 'core/services/server_discovery_service.dart';
 import 'core/services/auth_service.dart';
+import 'core/services/database_helper.dart';
 import 'presentation/screens/admin/admin_screen.dart';
 import 'presentation/screens/main_screen.dart';
 import 'presentation/screens/auth/login_screen.dart';
@@ -15,6 +16,7 @@ void main() async {
 
   await DeviceConfigService.instance.init();
   await NotificationService.instance.init();
+  await DatabaseHelper.instance.ensureAdminAccount();
   await AuthService.instance.init();
 
   MQTTService().connect().then((ok) {
