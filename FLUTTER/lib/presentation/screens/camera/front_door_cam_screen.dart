@@ -9,6 +9,7 @@ import '../../../core/theme/app_theme.dart';
 import '../../../core/services/database_helper.dart';
 import '../../../core/services/device_config_service.dart';
 import '../../../core/services/mqtt_service.dart';
+import '../../../core/services/auth_service.dart';
 import '../../../data/models/log_model.dart';
 import '../members/members_screen.dart';
 
@@ -24,7 +25,6 @@ class _FrontDoorCamScreenState extends State<FrontDoorCamScreen> {
 
   Key _streamKey = UniqueKey();
   bool _isStreamActive = true;
-  bool _isStreamConnected = false;
   Timer? _retryTimer;
 
   List<Map<String, dynamic>> _recognizedFaces = [];
@@ -58,7 +58,7 @@ class _FrontDoorCamScreenState extends State<FrontDoorCamScreen> {
         final data  = event['data']  as Map<String, dynamic>;
 
         if (topic == AppConfig.topicFaceAlert) {
-          DatabaseHelper.instance.addLog('Cảnh báo: Người lạ', 'Phát hiện khuôn mặt không xác định tại cửa');
+          DatabaseHelper.instance.addLog('Cảnh báo: Người lạ', 'Phát hiện khuôn mặt không xác định tại cửa', userId: AuthService.instance.userId);
           if (mounted) {
             _showBanner('CẢNH BÁO: Phát hiện người lạ!', AppColors.error);
             setState(() => _recognizedFaces = [data]);
@@ -70,7 +70,7 @@ class _FrontDoorCamScreenState extends State<FrontDoorCamScreen> {
             final confidence = data['confidence'] != null
                 ? '${((data['confidence'] as num) * 100).toStringAsFixed(0)}%'
                 : '';
-            DatabaseHelper.instance.addLog('Nhận diện thành công', '$name tại cửa · $confidence');
+            DatabaseHelper.instance.addLog('Nhận diện thành công', '$name tại cửa · $confidence', userId: AuthService.instance.userId);
           }
           if (mounted) {
             _showBanner(
@@ -93,15 +93,11 @@ class _FrontDoorCamScreenState extends State<FrontDoorCamScreen> {
 
   void _reconnectStream() {
     _retryTimer?.cancel();
-    setState(() {
-      _streamKey = UniqueKey();
-      _isStreamConnected = false;
-    });
+    setState(() => _streamKey = UniqueKey());
   }
 
   void _onStreamError() {
     if (!mounted) return;
-    setState(() => _isStreamConnected = false);
     _retryTimer?.cancel();
     _retryTimer = Timer(const Duration(seconds: 3), () {
       if (mounted && AppConfig.streamUrl.isNotEmpty) {
