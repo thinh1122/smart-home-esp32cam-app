@@ -30,7 +30,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   Future<void> _loadStats() async {
     final devices = await DatabaseHelper.instance.getAllDevices(userId: AuthService.instance.userId);
-    final members = await DatabaseHelper.instance.getAllMembers();
+    final members = await DatabaseHelper.instance.getAllMembers(userId: AuthService.instance.userId);
     if (!mounted) return;
     setState(() {
       _lightDevices = devices.where((d) => d['device_type'] == 'light').toList();

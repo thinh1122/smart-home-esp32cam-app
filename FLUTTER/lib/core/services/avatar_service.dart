@@ -5,13 +5,14 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 class AvatarService extends ValueNotifier<String?> {
   static final AvatarService instance = AvatarService._();
-  AvatarService._() : super(null) {
-    _load();
-  }
+  AvatarService._() : super(null);
 
-  static const _key = 'user_avatar_path';
+  int _userId = 0;
+  String get _key => 'user_avatar_path_$_userId';
 
-  Future<void> _load() async {
+  Future<void> loadForUser(int userId) async {
+    _userId = userId;
+    value = null;
     final prefs = await SharedPreferences.getInstance();
     final path = prefs.getString(_key);
     if (path != null && File(path).existsSync()) {
@@ -19,7 +20,11 @@ class AvatarService extends ValueNotifier<String?> {
     }
   }
 
-  // Mở thư viện ảnh, trả về true nếu đổi thành công
+  Future<void> clear() async {
+    value = null;
+    _userId = 0;
+  }
+
   Future<bool> pickFromGallery() async {
     final picker = ImagePicker();
     final picked = await picker.pickImage(
@@ -36,7 +41,6 @@ class AvatarService extends ValueNotifier<String?> {
     return true;
   }
 
-  // Widget hiển thị avatar (dùng chung ở home + profile)
   ImageProvider? get imageProvider {
     if (value != null && File(value!).existsSync()) {
       return FileImage(File(value!));

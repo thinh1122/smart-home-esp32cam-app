@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import '../config/app_config.dart';
+import 'auth_service.dart';
 import 'database_helper.dart';
 
 class MemberSyncService {
@@ -25,7 +26,7 @@ class MemberSyncService {
           'name': m['name'] ?? '',
           'role': m['role'] ?? 'Face ID',
           'avatar': m['avatar'] ?? '',
-        });
+        }, userId: AuthService.instance.userId);
       }
     } catch (_) {}
   }

@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'database_helper.dart';
+import 'avatar_service.dart';
 
 class AuthService {
   static final AuthService instance = AuthService._();
@@ -27,6 +28,7 @@ class AuthService {
       final user = await DatabaseHelper.instance.getUserByEmail(email);
       if (user != null) {
         _currentUser = user;
+        await AvatarService.instance.loadForUser(user['id']);
         isLoggedIn.value = true;
       } else {
         await _clearPrefs(prefs);
@@ -53,6 +55,7 @@ class AuthService {
         'password': password,
       };
       await _savePrefs();
+      await AvatarService.instance.loadForUser(id);
       isLoggedIn.value = true;
       return null;
     } catch (e) {
@@ -71,6 +74,7 @@ class AuthService {
 
     _currentUser = user;
     await _savePrefs();
+    await AvatarService.instance.loadForUser(user['id']);
     isLoggedIn.value = true;
     return null;
   }
@@ -78,6 +82,7 @@ class AuthService {
   Future<void> logout() async {
     _currentUser = null;
     isLoggedIn.value = false;
+    await AvatarService.instance.clear();
     final prefs = await SharedPreferences.getInstance();
     await _clearPrefs(prefs);
   }

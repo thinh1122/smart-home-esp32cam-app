@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
+import '../../../core/services/auth_service.dart';
 import '../../../core/services/database_helper.dart';
 import '../../../core/services/member_sync_service.dart';
 import '../../../core/theme/app_theme.dart';
@@ -26,7 +27,7 @@ class _MembersScreenState extends State<MembersScreen> {
   }
 
   Future<void> _load() async {
-    final rows = await DatabaseHelper.instance.getAllMembers();
+    final rows = await DatabaseHelper.instance.getAllMembers(userId: AuthService.instance.userId);
     if (!mounted) return;
     setState(() {
       _members = rows.map(Member.fromMap).toList();
@@ -115,7 +116,7 @@ class _MembersScreenState extends State<MembersScreen> {
         'name': name,
         'role': role,
         'avatar': avatarBase64,
-      });
+      }, userId: AuthService.instance.userId);
       await DatabaseHelper.instance.addLog('Đăng ký khuôn mặt', '$name (ID: $id)');
       await _load();
       if (mounted) _snack('Đã đăng ký: $name', AppColors.success);
@@ -163,7 +164,7 @@ class _MembersScreenState extends State<MembersScreen> {
         'name': member.name,
         'role': member.role,
         'avatar': avatarBase64,
-      });
+      }, userId: AuthService.instance.userId);
       await _load();
       if (mounted) _snack('Đã cập nhật khuôn mặt: ${member.name}', AppColors.info);
     }

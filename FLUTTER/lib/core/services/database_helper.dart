@@ -20,7 +20,7 @@ class DatabaseHelper {
   Future<Database> _initDB(String filePath) async {
     final dbPath = await getDatabasesPath();
     final path = join(dbPath, filePath);
-    return await openDatabase(path, version: 5, onCreate: _createDB, onUpgrade: _onUpgrade);
+    return await openDatabase(path, version: 6, onCreate: _createDB, onUpgrade: _onUpgrade);
   }
 
   Future _createDB(Database db, int version) async {
@@ -36,6 +36,7 @@ class DatabaseHelper {
     await db.execute('''
       CREATE TABLE members (
         id TEXT PRIMARY KEY,
+        user_id INTEGER NOT NULL DEFAULT 0,
         name TEXT,
         role TEXT,
         avatar TEXT
@@ -92,19 +93,22 @@ class DatabaseHelper {
       ''');
     }
     if (oldVersion < 5) {
-      // Thêm cột user_id vào bảng devices đã tồn tại
       await db.execute('ALTER TABLE devices ADD COLUMN user_id INTEGER NOT NULL DEFAULT 0');
+    }
+    if (oldVersion < 6) {
+      await db.execute('ALTER TABLE members ADD COLUMN user_id INTEGER NOT NULL DEFAULT 0');
     }
   }
 
-  Future<void> insertMember(Map<String, dynamic> member) async {
+  Future<void> insertMember(Map<String, dynamic> member, {required int userId}) async {
     final db = await instance.database;
-    await db.insert('members', member, conflictAlgorithm: ConflictAlgorithm.replace);
+    await db.insert('members', {...member, 'user_id': userId},
+        conflictAlgorithm: ConflictAlgorithm.replace);
   }
 
-  Future<List<Map<String, dynamic>>> getAllMembers() async {
+  Future<List<Map<String, dynamic>>> getAllMembers({required int userId}) async {
     final db = await instance.database;
-    return await db.query('members');
+    return await db.query('members', where: 'user_id = ?', whereArgs: [userId]);
   }
 
   Future<void> deleteMember(String id) async {
