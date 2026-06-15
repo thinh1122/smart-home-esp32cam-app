@@ -50,8 +50,10 @@ def _save_esp32_config():
 
 _load_esp32_config()  # đọc config ngay khi import
 
-MQTT_BROKER = "broker.emqx.io"
-MQTT_PORT   = 1883
+MQTT_BROKER = "93a7685af2254d02a616baa58c6ae86e.s1.eu.hivemq.cloud"
+MQTT_PORT   = 8883
+MQTT_USER   = "smarthome"
+MQTT_PASS   = "SmartHome@2026"
 
 # Bypass proxy hệ thống — requests tới ESP32 trên LAN không qua proxy
 _NO_PROXY = {"http": "", "https": ""}
@@ -140,6 +142,8 @@ def init_mqtt():
             client_id=f"ai_server_{int(time.time())}",
             callback_api_version=mqtt.CallbackAPIVersion.VERSION2
         )
+        mqtt_client.username_pw_set(MQTT_USER, MQTT_PASS)
+        mqtt_client.tls_set()  # SSL cho HiveMQ Cloud port 8883
         mqtt_client.on_connect    = on_connect
         mqtt_client.on_disconnect = on_disconnect
         mqtt_client.reconnect_delay_set(min_delay=2, max_delay=60)
