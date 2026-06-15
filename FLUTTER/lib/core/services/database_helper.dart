@@ -176,6 +176,33 @@ class DatabaseHelper {
   }
 
   // ── Users ─────────────────────────────────────────────────
+  /// Gán lại user_id cho logs và members cũ có user_id = 0
+  Future<void> repairOrphanData() async {
+    final db = await instance.database;
+    final users = await db.query('users');
+
+    // Fix logs: detail có dạng "Tên (email)"
+    for (final user in users) {
+      final email = user['email'] as String;
+      final id    = user['id'] as int;
+      await db.rawUpdate('''
+        UPDATE logs SET user_id = ?
+        WHERE user_id = 0 AND detail LIKE ?
+      ''', [id, '%$email%']);
+    }
+
+    // Fix members: nếu chỉ có 1 user thật (không phải admin), gán orphan cho họ
+    final realUsers = users.where(
+        (u) => (u['email'] as String).toLowerCase() != 'admin@gmail.com').toList();
+    if (realUsers.length == 1) {
+      final onlyUserId = realUsers.first['id'] as int;
+      await db.rawUpdate('''
+        UPDATE members SET user_id = ?
+        WHERE user_id = 0
+      ''', [onlyUserId]);
+    }
+  }
+
   Future<void> ensureAdminAccount() async {
     final db = await instance.database;
     final existing = await db.query('users',

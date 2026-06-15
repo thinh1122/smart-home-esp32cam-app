@@ -17,6 +17,7 @@ void main() async {
   await DeviceConfigService.instance.init();
   await NotificationService.instance.init();
   await DatabaseHelper.instance.ensureAdminAccount();
+  await DatabaseHelper.instance.repairOrphanData();
   await AuthService.instance.init();
 
   MQTTService().connect().then((ok) {
