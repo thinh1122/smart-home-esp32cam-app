@@ -212,4 +212,34 @@ class DatabaseHelper {
     await db.update('users', {'password': newPassword},
         where: 'id = ?', whereArgs: [id]);
   }
+
+  // ── Admin ─────────────────────────────────────────────────
+  Future<List<Map<String, dynamic>>> getAllUsers() async {
+    final db = await instance.database;
+    return await db.query('users', orderBy: 'created_at DESC');
+  }
+
+  Future<List<Map<String, dynamic>>> getDevicesByUserId(int userId) async {
+    final db = await instance.database;
+    return await db.query('devices',
+        where: 'user_id = ?', whereArgs: [userId], orderBy: 'created_at DESC');
+  }
+
+  Future<List<Map<String, dynamic>>> getMembersByUserId(int userId) async {
+    final db = await instance.database;
+    return await db.query('members',
+        where: 'user_id = ?', whereArgs: [userId]);
+  }
+
+  Future<List<Map<String, dynamic>>> getAllLogs({int limit = 100}) async {
+    final db = await instance.database;
+    return await db.query('logs', orderBy: 'timestamp DESC', limit: limit);
+  }
+
+  Future<void> deleteUser(int id) async {
+    final db = await instance.database;
+    await db.delete('devices', where: 'user_id = ?', whereArgs: [id]);
+    await db.delete('members', where: 'user_id = ?', whereArgs: [id]);
+    await db.delete('users', where: 'id = ?', whereArgs: [id]);
+  }
 }

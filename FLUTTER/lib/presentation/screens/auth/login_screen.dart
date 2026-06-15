@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../../core/services/auth_service.dart';
 import '../../../core/theme/app_theme.dart';
+import '../admin/admin_screen.dart';
 import '../main_screen.dart';
 import 'register_screen.dart';
 
@@ -40,8 +41,10 @@ class _LoginScreenState extends State<LoginScreen> {
       setState(() { _loading = false; _error = err; });
     } else {
       setState(() { _loading = false; });
+      final isAdmin = AuthService.instance.isAdmin;
       Navigator.of(context).pushAndRemoveUntil(
-        MaterialPageRoute(builder: (_) => const MainScreen()),
+        MaterialPageRoute(builder: (_) =>
+            isAdmin ? const AdminScreen() : const MainScreen()),
         (route) => false,
       );
     }

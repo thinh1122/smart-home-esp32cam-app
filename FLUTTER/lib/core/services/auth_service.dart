@@ -19,6 +19,7 @@ class AuthService {
   String get userName  => _currentUser?['name'] ?? '';
   String get userEmail => _currentUser?['email'] ?? '';
   int    get userId    => _currentUser?['id'] ?? 0;
+  bool   get isAdmin   => userEmail.toLowerCase() == 'admin@gmail.com';
 
   Future<void> init() async {
     final prefs = await SharedPreferences.getInstance();

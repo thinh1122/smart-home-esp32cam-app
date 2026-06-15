@@ -6,6 +6,7 @@ import 'core/services/notification_service.dart';
 import 'core/services/app_notification_service.dart';
 import 'core/services/server_discovery_service.dart';
 import 'core/services/auth_service.dart';
+import 'presentation/screens/admin/admin_screen.dart';
 import 'presentation/screens/main_screen.dart';
 import 'presentation/screens/auth/login_screen.dart';
 
@@ -52,8 +53,12 @@ class _AuthGate extends StatelessWidget {
   Widget build(BuildContext context) {
     return ValueListenableBuilder<bool>(
       valueListenable: AuthService.instance.isLoggedIn,
-      builder: (_, loggedIn, __) =>
-          loggedIn ? const MainScreen() : const LoginScreen(),
+      builder: (_, loggedIn, __) {
+        if (!loggedIn) return const LoginScreen();
+        return AuthService.instance.isAdmin
+            ? const AdminScreen()
+            : const MainScreen();
+      },
     );
   }
 }
