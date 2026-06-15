@@ -57,6 +57,8 @@ class AuthService {
       };
       await _savePrefs();
       await AvatarService.instance.loadForUser(id);
+      await DatabaseHelper.instance.addLog(
+          'Đăng ký tài khoản', '${name.trim()} (${email.trim().toLowerCase()})');
       isLoggedIn.value = true;
       return null;
     } catch (e) {
@@ -65,7 +67,6 @@ class AuthService {
     }
   }
 
-  /// Trả về null nếu thành công, hoặc thông báo lỗi
   Future<String?> login(String email, String password) async {
     if (!_validEmail(email)) return 'Email không hợp lệ';
     if (password.isEmpty) return 'Vui lòng nhập mật khẩu';
@@ -76,11 +77,16 @@ class AuthService {
     _currentUser = user;
     await _savePrefs();
     await AvatarService.instance.loadForUser(user['id']);
+    await DatabaseHelper.instance.addLog(
+        'Đăng nhập', '${user['name']} (${email.trim().toLowerCase()})');
     isLoggedIn.value = true;
     return null;
   }
 
   Future<void> logout() async {
+    final name  = userName;
+    final email = userEmail;
+    await DatabaseHelper.instance.addLog('Đăng xuất', '$name ($email)');
     _currentUser = null;
     isLoggedIn.value = false;
     await AvatarService.instance.clear();

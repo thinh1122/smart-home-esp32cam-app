@@ -291,6 +291,7 @@ class _AddDeviceScreenState extends State<AddDeviceScreen> with SingleTickerProv
       'mqtt_topic': 'home/devices/light/${room.key}',
       'ble_mac': '',
     }, userId: AuthService.instance.userId);
+    await DatabaseHelper.instance.addLog('Thêm thiết bị', '${lightType.label} - ${room.label}');
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
         content: Text('Đã thêm đèn thành công!'),
@@ -309,6 +310,7 @@ class _AddDeviceScreenState extends State<AddDeviceScreen> with SingleTickerProv
       'mqtt_topic': 'home/devices/camera/entrance',
       'ble_mac': '',
     }, userId: AuthService.instance.userId);
+    await DatabaseHelper.instance.addLog('Thêm thiết bị', 'Camera an ninh');
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
         content: Text('Đã thêm camera thành công!'),
@@ -392,6 +394,7 @@ class _DeviceTypeScreenState extends State<_DeviceTypeScreen> {
       'mqtt_topic': 'home/devices/camera/entrance',
       'ble_mac': widget.bleMac,
     }, userId: AuthService.instance.userId);
+    await DatabaseHelper.instance.addLog('Thêm thiết bị', 'Camera an ninh (BLE)');
     if (mounted) Navigator.pop(context, true);
   }
 
@@ -412,6 +415,7 @@ class _DeviceTypeScreenState extends State<_DeviceTypeScreen> {
       'mqtt_topic': 'home/devices/light/${room.key}',
       'ble_mac': widget.bleMac,
     }, userId: AuthService.instance.userId);
+    await DatabaseHelper.instance.addLog('Thêm thiết bị', '${lightType.label} - ${room.label} (BLE)');
 
     final macTopic = widget.bleMac.replaceAll(':', '').toLowerCase();
     MQTTService().publish('home/devices/config/$macTopic', {
