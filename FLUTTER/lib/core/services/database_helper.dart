@@ -20,7 +20,7 @@ class DatabaseHelper {
   Future<Database> _initDB(String filePath) async {
     final dbPath = await getDatabasesPath();
     final path = join(dbPath, filePath);
-    return await openDatabase(path, version: 6, onCreate: _createDB, onUpgrade: _onUpgrade);
+    return await openDatabase(path, version: 7, onCreate: _createDB, onUpgrade: _onUpgrade);
   }
 
   Future _createDB(Database db, int version) async {
@@ -45,6 +45,7 @@ class DatabaseHelper {
     await db.execute('''
       CREATE TABLE logs (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL DEFAULT 0,
         timestamp TEXT,
         action TEXT,
         detail TEXT,
@@ -98,6 +99,9 @@ class DatabaseHelper {
     if (oldVersion < 6) {
       await db.execute('ALTER TABLE members ADD COLUMN user_id INTEGER NOT NULL DEFAULT 0');
     }
+    if (oldVersion < 7) {
+      await db.execute('ALTER TABLE logs ADD COLUMN user_id INTEGER NOT NULL DEFAULT 0');
+    }
   }
 
   Future<void> insertMember(Map<String, dynamic> member, {required int userId}) async {
@@ -116,9 +120,10 @@ class DatabaseHelper {
     await db.delete('members', where: 'id = ?', whereArgs: [id]);
   }
 
-  Future<void> addLog(String action, String detail, {String? imageUrl}) async {
+  Future<void> addLog(String action, String detail, {String? imageUrl, int userId = 0}) async {
     final db = await instance.database;
     await db.insert('logs', {
+      'user_id': userId,
       'timestamp': DateTime.now().toIso8601String(),
       'action': action,
       'detail': detail,
@@ -234,6 +239,13 @@ class DatabaseHelper {
   Future<List<Map<String, dynamic>>> getAllLogs({int limit = 100}) async {
     final db = await instance.database;
     return await db.query('logs', orderBy: 'timestamp DESC', limit: limit);
+  }
+
+  Future<List<Map<String, dynamic>>> getLogsByUserId(int userId, {int limit = 100}) async {
+    final db = await instance.database;
+    return await db.query('logs',
+        where: 'user_id = ?', whereArgs: [userId],
+        orderBy: 'timestamp DESC', limit: limit);
   }
 
   Future<void> deleteUser(int id) async {

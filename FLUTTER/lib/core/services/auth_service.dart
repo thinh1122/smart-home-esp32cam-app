@@ -58,7 +58,7 @@ class AuthService {
       await _savePrefs();
       await AvatarService.instance.loadForUser(id);
       await DatabaseHelper.instance.addLog(
-          'Đăng ký tài khoản', '${name.trim()} (${email.trim().toLowerCase()})');
+          'Đăng ký tài khoản', '${name.trim()} (${email.trim().toLowerCase()})', userId: id);
       isLoggedIn.value = true;
       return null;
     } catch (e) {
@@ -78,7 +78,7 @@ class AuthService {
     await _savePrefs();
     await AvatarService.instance.loadForUser(user['id']);
     await DatabaseHelper.instance.addLog(
-        'Đăng nhập', '${user['name']} (${email.trim().toLowerCase()})');
+        'Đăng nhập', '${user['name']} (${email.trim().toLowerCase()})', userId: user['id']);
     isLoggedIn.value = true;
     return null;
   }
@@ -86,7 +86,8 @@ class AuthService {
   Future<void> logout() async {
     final name  = userName;
     final email = userEmail;
-    await DatabaseHelper.instance.addLog('Đăng xuất', '$name ($email)');
+    final id    = userId;
+    await DatabaseHelper.instance.addLog('Đăng xuất', '$name ($email)', userId: id);
     _currentUser = null;
     isLoggedIn.value = false;
     await AvatarService.instance.clear();
@@ -100,16 +101,19 @@ class AuthService {
     if (newPass.length < 6) return 'Mật khẩu mới ít nhất 6 ký tự';
     await DatabaseHelper.instance.updateUserPassword(userId, newPass);
     _currentUser = {..._currentUser!, 'password': newPass};
+    await DatabaseHelper.instance.addLog('Đổi mật khẩu', '$userName ($userEmail)', userId: userId);
     return null;
   }
 
   Future<String?> changeName(String newName) async {
     if (_currentUser == null) return 'Chưa đăng nhập';
     if (newName.trim().isEmpty) return 'Tên không được để trống';
+    final oldName = userName;
     await DatabaseHelper.instance.updateUserName(userId, newName.trim());
     _currentUser = {..._currentUser!, 'name': newName.trim()};
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_keyUserName, newName.trim());
+    await DatabaseHelper.instance.addLog('Đổi tên', '$oldName → ${newName.trim()} ($userEmail)', userId: userId);
     return null;
   }
 

@@ -235,7 +235,7 @@ class _DevicesScreenState extends State<DevicesScreen> {
     }
 
     await DatabaseHelper.instance.deleteDevice(id);
-    await DatabaseHelper.instance.addLog('Xoá thiết bị', 'Phòng: $room');
+    await DatabaseHelper.instance.addLog('Xoá thiết bị', 'Phòng: $room', userId: AuthService.instance.userId);
     _loadDevices();
 
     if (mounted) {

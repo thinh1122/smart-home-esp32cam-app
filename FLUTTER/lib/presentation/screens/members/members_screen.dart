@@ -117,7 +117,7 @@ class _MembersScreenState extends State<MembersScreen> {
         'role': role,
         'avatar': avatarBase64,
       }, userId: AuthService.instance.userId);
-      await DatabaseHelper.instance.addLog('Đăng ký khuôn mặt', '$name (ID: $id)');
+      await DatabaseHelper.instance.addLog('Đăng ký khuôn mặt', '$name (ID: $id)', userId: AuthService.instance.userId);
       await _load();
       if (mounted) _snack('Đã đăng ký: $name', AppColors.success);
     }
@@ -148,7 +148,7 @@ class _MembersScreenState extends State<MembersScreen> {
     if (confirm != true) return;
     await MemberSyncService.instance.deleteFromServer(member.id, member.name);
     await DatabaseHelper.instance.deleteMember(member.id);
-    await DatabaseHelper.instance.addLog('Xoá thành viên', '${member.name} (ID: ${member.id})');
+    await DatabaseHelper.instance.addLog('Xoá thành viên', '${member.name} (ID: ${member.id})', userId: AuthService.instance.userId);
     await _load();
     if (mounted) _snack('Đã xoá: ${member.name}', AppColors.error);
   }
@@ -165,6 +165,7 @@ class _MembersScreenState extends State<MembersScreen> {
         'role': member.role,
         'avatar': avatarBase64,
       }, userId: AuthService.instance.userId);
+      await DatabaseHelper.instance.addLog('Cập nhật khuôn mặt', '${member.name} (ID: ${member.id})', userId: AuthService.instance.userId);
       await _load();
       if (mounted) _snack('Đã cập nhật khuôn mặt: ${member.name}', AppColors.info);
     }

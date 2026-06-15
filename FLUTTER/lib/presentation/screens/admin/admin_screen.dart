@@ -17,6 +17,7 @@ class _AdminScreenState extends State<AdminScreen>
   List<Map<String, dynamic>> _users = [];
   List<Map<String, dynamic>> _logs  = [];
   bool _loading = true;
+  int? _filterUserId; // null = tất cả
 
   @override
   void initState() {
@@ -61,6 +62,8 @@ class _AdminScreenState extends State<AdminScreen>
       ),
     );
     if (confirm != true) return;
+    await DatabaseHelper.instance.addLog(
+      'Admin xoá tài khoản', '${user['name']} (${user['email']})', userId: 0);
     await DatabaseHelper.instance.deleteUser(user['id']);
     await _load();
     if (mounted) {
@@ -466,97 +469,130 @@ class _AdminScreenState extends State<AdminScreen>
 
   // ── TAB 3: LOGS ───────────────────────────────────────────
   Widget _buildLogsTab(AC ac) {
-    if (_logs.isEmpty) return _empty(ac, 'Chưa có lịch sử hoạt động');
+    final realUsers = _users.where((u) =>
+        u['email'].toString().toLowerCase() != 'admin@gmail.com').toList();
 
-    return ListView.builder(
-      padding: const EdgeInsets.all(16),
-      itemCount: _logs.length,
-      itemBuilder: (_, i) {
-        final log = _logs[i];
-        final isFirst = i == 0;
-        final isLast  = i == _logs.length - 1;
+    final filtered = _filterUserId == null
+        ? _logs
+        : _logs.where((l) => l['user_id'] == _filterUserId).toList();
 
-        return IntrinsicHeight(
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              // Timeline line
-              SizedBox(
-                width: 40,
-                child: Column(
-                  children: [
-                    if (!isFirst)
-                      Expanded(child: Center(
-                        child: Container(width: 2,
-                            color: ac.border),
-                      )),
-                    Container(
-                      width: 10, height: 10,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: _logColor(log['action'] ?? ''),
-                        border: Border.all(color: ac.bg, width: 2),
-                      ),
-                    ),
-                    if (!isLast)
-                      Expanded(child: Center(
-                        child: Container(width: 2,
-                            color: ac.border),
-                      )),
-                  ],
-                ),
+    return Column(
+      children: [
+        // Filter bar
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+            decoration: BoxDecoration(
+              color: ac.card,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: ac.border),
+            ),
+            child: DropdownButtonHideUnderline(
+              child: DropdownButton<int?>(
+                value: _filterUserId,
+                isExpanded: true,
+                dropdownColor: ac.card,
+                icon: Icon(Icons.filter_list_rounded, color: ac.accentLight, size: 18),
+                style: TextStyle(color: ac.textPrimary, fontSize: 13),
+                items: [
+                  DropdownMenuItem<int?>(
+                    value: null,
+                    child: Text('Tất cả tài khoản', style: TextStyle(color: ac.textSecondary)),
+                  ),
+                  ...realUsers.map((u) => DropdownMenuItem<int?>(
+                    value: u['id'] as int,
+                    child: Text('${u['name']} (${u['email']})',
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(color: ac.textPrimary)),
+                  )),
+                ],
+                onChanged: (v) => setState(() => _filterUserId = v),
               ),
-              // Log content
-              Expanded(
-                child: Container(
-                  margin: EdgeInsets.only(
-                    bottom: 10,
-                    top: isFirst ? 0 : 10,
-                  ),
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: ac.card,
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: ac.border),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+            ),
+          ),
+        ),
+        const SizedBox(height: 8),
+        if (filtered.isEmpty)
+          Expanded(child: _empty(ac, 'Chưa có lịch sử hoạt động'))
+        else
+          Expanded(
+            child: ListView.builder(
+              padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
+              itemCount: filtered.length,
+              itemBuilder: (_, i) {
+                final log     = filtered[i];
+                final isFirst = i == 0;
+                final isLast  = i == filtered.length - 1;
+                return IntrinsicHeight(
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      Row(
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 8, vertical: 3),
-                            decoration: BoxDecoration(
-                              color: _logColor(log['action'] ?? '')
-                                  .withOpacity(0.15),
-                              borderRadius: BorderRadius.circular(6),
+                      SizedBox(
+                        width: 40,
+                        child: Column(
+                          children: [
+                            if (!isFirst)
+                              Expanded(child: Center(child: Container(width: 2, color: ac.border))),
+                            Container(
+                              width: 10, height: 10,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: _logColor(log['action'] ?? ''),
+                                border: Border.all(color: ac.bg, width: 2),
+                              ),
                             ),
-                            child: Text(log['action'] ?? '',
-                                style: TextStyle(
-                                  color: _logColor(log['action'] ?? ''),
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.bold,
-                                )),
-                          ),
-                          const Spacer(),
-                          Text(_formatDateTime(log['timestamp'] ?? ''),
-                              style: TextStyle(
-                                  color: ac.textDim, fontSize: 10)),
-                        ],
+                            if (!isLast)
+                              Expanded(child: Center(child: Container(width: 2, color: ac.border))),
+                          ],
+                        ),
                       ),
-                      const SizedBox(height: 6),
-                      Text(log['detail'] ?? '',
-                          style: TextStyle(
-                              color: ac.textSecondary, fontSize: 12)),
+                      Expanded(
+                        child: Container(
+                          margin: EdgeInsets.only(bottom: 10, top: isFirst ? 0 : 10),
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: ac.card,
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: ac.border),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                    decoration: BoxDecoration(
+                                      color: _logColor(log['action'] ?? '').withOpacity(0.15),
+                                      borderRadius: BorderRadius.circular(6),
+                                    ),
+                                    child: Text(log['action'] ?? '',
+                                        style: TextStyle(
+                                          color: _logColor(log['action'] ?? ''),
+                                          fontSize: 10,
+                                          fontWeight: FontWeight.bold,
+                                        )),
+                                  ),
+                                  const Spacer(),
+                                  Text(_formatDateTime(log['timestamp'] ?? ''),
+                                      style: TextStyle(color: ac.textDim, fontSize: 10)),
+                                ],
+                              ),
+                              const SizedBox(height: 6),
+                              Text(log['detail'] ?? '',
+                                  style: TextStyle(color: ac.textSecondary, fontSize: 12)),
+                            ],
+                          ),
+                        ),
+                      ),
                     ],
                   ),
-                ),
-              ),
-            ],
+                );
+              },
+            ),
           ),
-        );
-      },
+      ],
     );
   }
 
