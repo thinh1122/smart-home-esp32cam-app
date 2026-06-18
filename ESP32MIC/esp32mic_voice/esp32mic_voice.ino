@@ -22,13 +22,14 @@
 // CONFIG
 // ============================================================
 #define AP_NAME      "SmartHome-Voice"  // Tên AP khi chưa có WiFi
-#define BOOT_PIN     0                  // Nút BOOT = GPIO0
-#define RESET_HOLD   3000               // Giữ 3 giây để reset WiFi
 
 #define MQTT_BROKER "93a7685af2254d02a616baa58c6ae86e.s1.eu.hivemq.cloud"
 #define MQTT_PORT   8883
 #define MQTT_USER   "smarthome"
 #define MQTT_PASS   "SmartHome@2026"
+
+#define TOPIC_RESET_WIFI   "home/devices/voice/reset_wifi"
+#define TOPIC_STATUS       "home/devices/voice/status"
 
 #define VOICE_THRESHOLD_ON   0.5f
 #define VOICE_THRESHOLD_OFF  0.7f
@@ -60,6 +61,16 @@ unsigned long lastReconnect = 0;
 // ============================================================
 void onMqttMessage(char* topic, byte* payload, unsigned int len) {
   String t = String(topic);
+
+  if (t == TOPIC_RESET_WIFI) {
+    Serial.println("Reset WiFi command received via MQTT");
+    WiFiManager wm;
+    wm.resetSettings();
+    delay(500);
+    ESP.restart();
+    return;
+  }
+
   // topic dạng: home/devices/light/{room}/state
   // extract room từ topic
   int idx = t.indexOf("light/");
@@ -96,25 +107,6 @@ void connectWiFi() {
 }
 
 // ============================================================
-// RESET WIFI — giữ nút BOOT 3 giây
-// ============================================================
-void checkResetButton() {
-  if (digitalRead(BOOT_PIN) == LOW) {
-    unsigned long pressTime = millis();
-    Serial.println("BOOT pressed — hold 3s to reset WiFi...");
-    while (digitalRead(BOOT_PIN) == LOW) {
-      if (millis() - pressTime >= RESET_HOLD) {
-        Serial.println("Resetting WiFi...");
-        WiFiManager wm;
-        wm.resetSettings();
-        delay(1000);
-        ESP.restart();
-      }
-    }
-  }
-}
-
-// ============================================================
 // MQTT
 // ============================================================
 bool connectMQTT() {
@@ -126,12 +118,17 @@ bool connectMQTT() {
   char buf[5];
   snprintf(buf, sizeof(buf), "%02x%02x", mac[4], mac[5]);
   clientId += buf;
-  bool ok = mqtt.connect(clientId.c_str(), MQTT_USER, MQTT_PASS);
+  bool ok = mqtt.connect(clientId.c_str(), MQTT_USER, MQTT_PASS,
+                          TOPIC_STATUS, MQTTQOS1, true, "offline");
   if (ok) {
     Serial.println(" OK");
     // Subscribe wildcard để nhận retained state từ ESP32-S3 #1
     mqtt.subscribe(TOPIC_STATE_WILDCARD);
     Serial.println("Subscribed: " + String(TOPIC_STATE_WILDCARD));
+    // Subscribe lệnh reset WiFi từ xa (thay cho nút vật lý)
+    mqtt.subscribe(TOPIC_RESET_WIFI);
+    Serial.println("Subscribed: " + String(TOPIC_RESET_WIFI));
+    mqtt.publish(TOPIC_STATUS, "online", true);
   } else {
     Serial.printf(" FAIL rc=%d\n", mqtt.state());
   }
@@ -228,7 +225,6 @@ void handleVoice() {
 void setup() {
   Serial.begin(115200);
   delay(500);
-  pinMode(BOOT_PIN, INPUT_PULLUP);
   Serial.println("\n=== ESP32-S3 Voice Control ===");
   Serial.printf("PSRAM: %s (%d KB)\n", psramFound() ? "found" : "not found", ESP.getFreePsram() / 1024);
 
@@ -270,6 +266,5 @@ void loop() {
     }
   }
   mqtt.loop();
-  checkResetButton();
   handleVoice();
 }

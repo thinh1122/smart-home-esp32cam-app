@@ -122,6 +122,23 @@ class _DevicesScreenState extends State<DevicesScreen> {
                         const SizedBox(height: 12),
                         ...cameras.map((d) => _buildCameraCard(ac, d)),
                       ],
+                      ValueListenableBuilder<bool>(
+                        valueListenable: MQTTService().voiceMicOnlineNotifier,
+                        builder: (_, online, __) {
+                          if (!online) return const SizedBox.shrink();
+                          return Padding(
+                            padding: const EdgeInsets.only(top: 20),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                _sectionLabel(ac, 'Điều khiển giọng nói', Icons.mic_rounded, ac.accentLight),
+                                const SizedBox(height: 12),
+                                _buildVoiceMicCard(ac),
+                              ],
+                            ),
+                          );
+                        },
+                      ),
                       const SizedBox(height: 24),
                     ],
                   ),
@@ -197,6 +214,68 @@ class _DevicesScreenState extends State<DevicesScreen> {
         onToggle:  (_) {},
         onTap:     () {},
         onDelete:  () => _deleteDevice(d['id'] as int, d['room'] as String, d['ble_mac'] as String? ?? ''),
+      ),
+    );
+  }
+
+  Widget _buildVoiceMicCard(AC ac) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: ac.card,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 44, height: 44,
+            decoration: BoxDecoration(color: ac.accentLight.withOpacity(0.15), borderRadius: BorderRadius.circular(12)),
+            child: Icon(Icons.mic_rounded, color: ac.accentLight),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('ESP32 Voice Mic', style: TextStyle(color: ac.textPrimary, fontSize: 15, fontWeight: FontWeight.w600)),
+                const SizedBox(height: 2),
+                Text('Đang hoạt động', style: TextStyle(color: ac.textSecondary, fontSize: 12)),
+              ],
+            ),
+          ),
+          TextButton(
+            onPressed: () async {
+              final ok = await showDialog<bool>(
+                context: context,
+                builder: (ctx) => AlertDialog(
+                  backgroundColor: ac.card,
+                  title: Text('Reset WiFi Voice Mic?', style: TextStyle(color: ac.textPrimary)),
+                  content: Text(
+                    'Thiết bị sẽ xoá WiFi đã lưu và mở lại mạng cấu hình "SmartHome-Voice" để kết nối WiFi mới.',
+                    style: TextStyle(color: ac.textSecondary),
+                  ),
+                  actions: [
+                    TextButton(onPressed: () => Navigator.pop(ctx, false),
+                        child: Text('Huỷ', style: TextStyle(color: ac.textSecondary))),
+                    TextButton(onPressed: () => Navigator.pop(ctx, true),
+                        child: Text('Reset', style: TextStyle(color: ac.error))),
+                  ],
+                ),
+              );
+              if (ok == true) {
+                MQTTService().resetVoiceMicWifi();
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                    content: Text('Đã gửi lệnh reset WiFi tới Voice Mic'),
+                    backgroundColor: Colors.orange,
+                    duration: Duration(seconds: 3),
+                  ));
+                }
+              }
+            },
+            child: Text('Reset WiFi', style: TextStyle(color: ac.error, fontSize: 13)),
+          ),
+        ],
       ),
     );
   }

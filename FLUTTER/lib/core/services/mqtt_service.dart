@@ -16,6 +16,7 @@ class MQTTService {
   bool _isConnected = false;
   StreamSubscription? _msgSub;
   final ValueNotifier<bool> connectionNotifier = ValueNotifier(false);
+  final ValueNotifier<bool> voiceMicOnlineNotifier = ValueNotifier(false);
 
   final _faceRecognitionController = StreamController<Map<String, dynamic>>.broadcast();
   final _deviceStateController = StreamController<Map<String, dynamic>>.broadcast();
@@ -82,6 +83,7 @@ class MQTTService {
       AppConfig.topicLogs,
       'home/server/ip',
       'home/devices/+/+/power',  // ACS712 power data từ ESP32-S3
+      'home/devices/voice/status',  // online/offline ESP32-MIC
     ];
     for (var topic in topics) {
       _client!.subscribe(topic, MqttQos.atLeastOnce);
@@ -144,6 +146,17 @@ class MQTTService {
     });
   }
 
+  void resetVoiceMicWifi() {
+    const topic = 'home/devices/voice/reset_wifi';
+    publish(topic, {
+      'action': 'reset_wifi',
+      'ts': DateTime.now().millisecondsSinceEpoch,
+    }, retain: true);
+    Future.delayed(const Duration(seconds: 3), () {
+      publishRaw(topic, '', retain: true);
+    });
+  }
+
   void controlDoor(String doorName, String action) {
     publish('home/devices/door/$doorName/command', {
       'action': action,
@@ -157,6 +170,10 @@ class MQTTService {
       final payload = MqttPublishPayload.bytesToStringAsString(
         (message.payload as MqttPublishMessage).payload.message,
       );
+      if (topic == 'home/devices/voice/status') {
+        voiceMicOnlineNotifier.value = payload == 'online';
+        continue;
+      }
       try {
         final data = jsonDecode(payload) as Map<String, dynamic>;
         if (topic == 'home/server/ip') {
