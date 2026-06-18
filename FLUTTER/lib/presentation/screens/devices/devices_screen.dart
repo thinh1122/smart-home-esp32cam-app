@@ -35,8 +35,6 @@ class _DevicesScreenState extends State<DevicesScreen> {
         final parts = topic.split('/');
         if (parts.length >= 4) {
           final room = parts[3];
-          final validRooms = _devices.map((d) => d['room'] as String).toSet();
-          if (!validRooms.contains(room)) return;
           final on = (data['state'] as String?)?.toUpperCase() == 'ON';
           if (mounted) setState(() => _states[room] = on);
         }
@@ -49,8 +47,6 @@ class _DevicesScreenState extends State<DevicesScreen> {
       final parts = topic.split('/');
       if (parts.length >= 4) {
         final room = parts[3];
-        final validRooms = _devices.map((d) => d['room'] as String).toSet();
-        if (!validRooms.contains(room)) return;
         final watt = (data['watt'] as num?)?.toDouble() ?? 0;
         if (mounted) setState(() => _watts[room] = watt);
       }
