@@ -267,9 +267,13 @@ void initBLE() {
   snprintf(buf, sizeof(buf), "%02X%02X", mac[4], mac[5]);
   name += buf;
 
+  WiFi.mode(WIFI_OFF);
+  delay(300);
   WiFi.mode(WIFI_STA);
   WiFi.disconnect();
-  int n = WiFi.scanNetworks();
+  delay(200);
+  int n = WiFi.scanNetworks();  // blocking, nhưng driver đã được reset sạch ở trên nên không bị kẹt
+  if (n < 0) n = 0;  // scan fail → danh sách rỗng, không chặn BLE init
   String list = "";
   for (int i = 0; i < min(n, 10); i++) {
     if (WiFi.SSID(i).length() > 0) {
@@ -326,7 +330,11 @@ void loadAndConnect() {
   String pass = prefs.getString("pass", "");
   prefs.end();
 
-  if (ssid.isEmpty()) { Serial.println("No WiFi saved → BLE mode"); return; }
+  if (ssid.isEmpty()) {
+    Serial.println("No WiFi saved → BLE mode");
+    Serial.println("Mo app Flutter, ket noi BLE 'ESP32S3_Relay-XXXX' de cau hinh WiFi");
+    return;
+  }
 
   Serial.println("Saved WiFi: " + ssid);
   WiFi.mode(WIFI_STA);
@@ -342,7 +350,10 @@ void loadAndConnect() {
     Serial.printf("\nWiFi OK — IP: %s\n", WiFi.localIP().toString().c_str());
   } else {
     Serial.println("\nWiFi failed → BLE mode");
+    Serial.println("WiFi cu khong tim thay hoac sai pass — mo app de cau hinh lai");
     WiFi.disconnect(true);
+    WiFi.mode(WIFI_OFF);
+    delay(500);
   }
 }
 

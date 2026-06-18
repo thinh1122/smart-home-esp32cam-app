@@ -85,6 +85,7 @@ void connectWiFi() {
   wm.setConfigPortalTimeout(120);
 
   Serial.println("WiFiManager starting...");
+  Serial.println("Giu nut BOOT 3s ngay luc nay de vao AP mode doi WiFi");
   if (!wm.autoConnect(AP_NAME)) {
     Serial.println("WiFi failed — restarting...");
     delay(3000);

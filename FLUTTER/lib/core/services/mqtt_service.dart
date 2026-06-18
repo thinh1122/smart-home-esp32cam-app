@@ -88,28 +88,41 @@ class MQTTService {
     }
   }
 
-  void publish(String topic, Map<String, dynamic> payload) {
+  void publish(String topic, Map<String, dynamic> payload, {bool retain = false}) {
     if (!_isConnected || _client == null) {
       connect().then((ok) {
         if (ok) {
-          Future.delayed(const Duration(milliseconds: 300), () => _doPublish(topic, payload));
+          Future.delayed(const Duration(milliseconds: 300), () => _doPublish(topic, payload, retain: retain));
         } else {
           debugPrint('MQTT publish skipped — offline: $topic');
         }
       });
       return;
     }
-    _doPublish(topic, payload);
+    _doPublish(topic, payload, retain: retain);
   }
 
-  void _doPublish(String topic, Map<String, dynamic> payload) {
+  void _doPublish(String topic, Map<String, dynamic> payload, {bool retain = false}) {
     try {
       final builder = MqttClientPayloadBuilder();
       builder.addString(jsonEncode(payload));
-      _client!.publishMessage(topic, MqttQos.atLeastOnce, builder.payload!);
-      debugPrint('MQTT publish → $topic: $payload');
+      _client!.publishMessage(topic, MqttQos.atLeastOnce, builder.payload!, retain: retain);
+      debugPrint('MQTT publish → $topic: $payload${retain ? " [retain]" : ""}');
     } catch (e) {
       debugPrint('MQTT publish error: $e');
+    }
+  }
+
+  /// Publish raw string (dùng để clear retained message bằng cách publish payload rỗng)
+  void publishRaw(String topic, String payload, {bool retain = false}) {
+    if (!_isConnected || _client == null) return;
+    try {
+      final builder = MqttClientPayloadBuilder();
+      if (payload.isNotEmpty) builder.addString(payload);
+      _client!.publishMessage(topic, MqttQos.atLeastOnce, builder.payload!, retain: retain);
+      debugPrint('MQTT publishRaw → $topic${retain ? " [retain]" : ""}');
+    } catch (e) {
+      debugPrint('MQTT publishRaw error: $e');
     }
   }
 
@@ -183,6 +196,8 @@ class MQTTService {
     _msgSub?.cancel();
     _msgSub = _client!.updates!.listen(_onMessage);
     publish('home/flutter/status', {'status': 'online', 'ts': DateTime.now().toIso8601String()});
+    // Force broker gửi lại retained state ngay khi (re)connect — đảm bảo UI luôn nhận trạng thái thật
+    resubscribeState();
   }
 
   void _onDisconnected() {

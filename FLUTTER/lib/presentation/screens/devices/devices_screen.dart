@@ -227,9 +227,14 @@ class _DevicesScreenState extends State<DevicesScreen> {
 
     if (bleMac.isNotEmpty) {
       final macTopic = bleMac.replaceAll(':', '').toLowerCase();
-      MQTTService().publish('home/devices/config/$macTopic', {
+      final configTopic = 'home/devices/config/$macTopic';
+      MQTTService().publish(configTopic, {
         'action': 'reset_wifi',
         'ts': DateTime.now().millisecondsSinceEpoch,
+      }, retain: true);
+      // Clear retained message sau 3s để ESP32 không bị reset loop khi boot lại
+      Future.delayed(const Duration(seconds: 3), () {
+        MQTTService().publishRaw(configTopic, '', retain: true);
       });
       await Future.delayed(const Duration(milliseconds: 500));
     }

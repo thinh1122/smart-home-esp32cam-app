@@ -31,7 +31,9 @@
       "PowerShell(Get-Command mosquitto_sub -ErrorAction SilentlyContinue)",
       "Bash(Remove-Item -Recurse -Force \"C:\\\\Users\\\\DELL\\\\AndroidStudioProjects\\\\DATN\\\\MIC\")",
       "Bash(dir \"c:\\\\Users\\\\DELL\\\\AndroidStudioProjects\\\\DATN\")",
-      "Bash(rm -rf \"C:/Users/DELL/AppData/Local/arduino/sketches/\" \"C:/Users/DELL/AppData/Local/arduino/cores/\")"
+      "Bash(rm -rf \"C:/Users/DELL/AppData/Local/arduino/sketches/\" \"C:/Users/DELL/AppData/Local/arduino/cores/\")",
+      "Bash(git show *)",
+      "Bash(git rm *)"
     ],
     "additionalDirectories": [
       "C:\\Users\\DELL\\AppData\\Local\\arduino\\sketches"
