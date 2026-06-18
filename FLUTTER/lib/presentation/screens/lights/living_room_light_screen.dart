@@ -7,13 +7,14 @@ import '../../../core/services/database_helper.dart';
 import '../../../core/services/auth_service.dart';
 import '../../widgets/painters/brightness_ring_painter.dart';
 
-// Model 1 hẹn giờ — luu/chay tren ESP32 (NVS + NTP), Flutter chi hien thi va dong bo qua MQTT
+// Model 1 hẹn giờ (lưu lịch sử)
 class _ScheduleEntry {
   final String id;
   bool turnOn;
-  int hour;
+  int hour;   // giờ cụ thể để chạy lại
   int minute;
   bool enabled;
+  Timer? _timer;
   Duration remaining;
 
   _ScheduleEntry({
@@ -50,12 +51,9 @@ class _LivingRoomLightScreenState extends State<LivingRoomLightScreen> {
   Timer? _brightnessDebounce;
 
   final List<_ScheduleEntry> _schedules = [];
-  Timer? _countdownTicker;
+  int _seq = 0;
 
   StreamSubscription? _stateSub;
-  String get _topicSchedSet  => 'home/devices/light/${widget.room}/schedule/set';
-  String get _topicSchedDel  => 'home/devices/light/${widget.room}/schedule/delete';
-  String get _topicSchedList => 'home/devices/light/${widget.room}/schedule/list';
 
   @override
   void initState() {
@@ -68,40 +66,13 @@ class _LivingRoomLightScreenState extends State<LivingRoomLightScreen> {
     });
     _stateSub = MQTTService().deviceStateStream.listen((msg) {
       final topic = msg['topic'] as String;
-      final data  = msg['data'];
+      final data  = msg['data'] as Map<String, dynamic>;
       if (topic == 'home/devices/light/${widget.room}/state') {
-        final map = data as Map<String, dynamic>;
-        final stateStr = (map['state'] as String?)?.toUpperCase() ?? 'OFF';
+        final stateStr = (data['state'] as String?)?.toUpperCase() ?? 'OFF';
         final on = stateStr == 'ON';
         if (mounted) setState(() => _isOn = on);
         DatabaseHelper.instance.updateDeviceState(widget.room, stateStr, userId: AuthService.instance.userId);
-      } else if (topic == _topicSchedList) {
-        final list = data as List<dynamic>;
-        if (mounted) {
-          setState(() {
-            _schedules.clear();
-            for (final raw in list) {
-              final o = raw as Map<String, dynamic>;
-              _schedules.add(_ScheduleEntry(
-                id:      o['id'] as String,
-                turnOn:  o['turnOn'] as bool? ?? false,
-                hour:    (o['hour']   as num?)?.toInt() ?? 0,
-                minute:  (o['minute'] as num?)?.toInt() ?? 0,
-                enabled: o['enabled'] as bool? ?? false,
-              ));
-            }
-          });
-        }
       }
-    });
-    // ESP32 luu va kich hoat hen gio — Flutter chi can dem ngược hien thi
-    _countdownTicker = Timer.periodic(const Duration(seconds: 1), (_) {
-      if (!mounted) return;
-      setState(() {
-        for (final s in _schedules) {
-          if (s.enabled) s.remaining = _ScheduleEntry._calcRemaining(s.hour, s.minute);
-        }
-      });
     });
   }
 
@@ -109,7 +80,7 @@ class _LivingRoomLightScreenState extends State<LivingRoomLightScreen> {
   void dispose() {
     _stateSub?.cancel();
     _brightnessDebounce?.cancel();
-    _countdownTicker?.cancel();
+    for (final s in _schedules) { s._timer?.cancel(); }
     super.dispose();
   }
 
@@ -133,31 +104,57 @@ class _LivingRoomLightScreenState extends State<LivingRoomLightScreen> {
     });
   }
 
-  // ── Thêm hẹn giờ mới — gửi cho ESP32 lưu NVS và tự kích hoạt qua NTP ──
-  void _addSchedule(int hour, int minute, bool turnOn) {
-    final id = 'sch_${DateTime.now().millisecondsSinceEpoch}';
-    final entry = _ScheduleEntry(id: id, turnOn: turnOn, hour: hour, minute: minute, enabled: true);
-    setState(() => _schedules.insert(0, entry));
-    MQTTService().publish(_topicSchedSet, {
-      'id': id, 'hour': hour, 'minute': minute, 'turnOn': turnOn, 'enabled': true,
+  // ── Khởi động timer cho 1 entry ─────────────────────────────
+  void _startTimer(_ScheduleEntry entry) {
+    entry._timer?.cancel();
+    entry.remaining = _ScheduleEntry._calcRemaining(entry.hour, entry.minute);
+    entry._timer = Timer.periodic(const Duration(seconds: 1), (t) {
+      if (!mounted) { t.cancel(); return; }
+      final next = entry.remaining - const Duration(seconds: 1);
+      if (next <= Duration.zero) {
+        t.cancel();
+        _toggleLight(entry.turnOn);
+        setState(() => entry.enabled = false);
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(entry.turnOn ? 'Đèn đã bật theo hẹn giờ' : 'Đèn đã tắt theo hẹn giờ'),
+          backgroundColor: entry.turnOn ? Colors.green : Colors.blueGrey,
+        ));
+      } else {
+        setState(() => entry.remaining = next);
+      }
     });
+  }
+
+  // ── Thêm hẹn giờ mới ────────────────────────────────────────
+  void _addSchedule(int hour, int minute, bool turnOn) {
+    _seq++;
+    final entry = _ScheduleEntry(
+      id: 'sch_$_seq',
+      turnOn: turnOn,
+      hour: hour,
+      minute: minute,
+      enabled: true,
+    );
+    _startTimer(entry);
+    setState(() => _schedules.insert(0, entry));
   }
 
   // ── Bật/tắt 1 hẹn giờ ───────────────────────────────────────
   void _toggleSchedule(_ScheduleEntry entry, bool val) {
     setState(() => entry.enabled = val);
-    MQTTService().publish(_topicSchedSet, {
-      'id': entry.id, 'hour': entry.hour, 'minute': entry.minute,
-      'turnOn': entry.turnOn, 'enabled': val,
-    });
+    if (val) {
+      _startTimer(entry);
+    } else {
+      entry._timer?.cancel();
+    }
   }
 
   // ── Xoá 1 hẹn giờ ───────────────────────────────────────────
   void _deleteSchedule(String id) {
     final idx = _schedules.indexWhere((s) => s.id == id);
     if (idx < 0) return;
+    _schedules[idx]._timer?.cancel();
     setState(() => _schedules.removeAt(idx));
-    MQTTService().publish(_topicSchedDel, {'id': id});
   }
 
   void _showTimerPicker() {

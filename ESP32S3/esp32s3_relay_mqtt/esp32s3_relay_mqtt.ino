@@ -8,15 +8,9 @@
  *     Khong co → BLE mode → Flutter gui SSID+PASS → luu → restart
  *
  * MQTT Topics:
- *   Sub: home/devices/light/{room}/command         {"state":"ON"/"OFF"}
- *   Sub: home/devices/light/{room}/schedule/set     {"id":"sch_1","hour":7,"minute":0,"turnOn":true,"enabled":true}
- *   Sub: home/devices/light/{room}/schedule/delete  {"id":"sch_1"}
- *   Pub: home/devices/light/{room}/state           {"state":"ON"/"OFF","ts":...}  retain
- *   Pub: home/devices/light/{room}/power           {"watt":...,"current":...,"state":...,"ts":...}
- *   Pub: home/devices/light/{room}/schedule/list    [{"id":...,"hour":...,"minute":...,"turnOn":...,"enabled":...}]  retain
- *
- * Hen gio: ESP32 tu dong bo gio qua NTP, luu schedule vao NVS, tu kich hoat
- * dung gio bat ke app Flutter co mo hay khong (1 lan, sau khi chay xong tu enabled=false).
+ *   Sub: home/devices/light/{room}/command  {"state":"ON"/"OFF"}
+ *   Pub: home/devices/light/{room}/state    {"state":"ON"/"OFF","ts":...}  retain
+ *   Pub: home/devices/light/{room}/power    {"watt":...,"current":...,"state":...,"ts":...}
  */
 
 #include <WiFi.h>
@@ -29,7 +23,6 @@
 #include <BLE2902.h>
 #include <PubSubClient.h>
 #include <ArduinoJson.h>
-#include <time.h>
 
 // ============================================================
 // CONFIG
@@ -89,23 +82,6 @@ unsigned long lastReconnect  = 0;
 unsigned long bootPressStart = 0;
 bool          bootPressed    = false;
 
-// ── Schedule (hen gio) ──────────────────────────────────────
-#define MAX_SCHEDULES 10
-struct Schedule {
-  String id;
-  uint8_t hour;
-  uint8_t minute;
-  bool turnOn;
-  bool enabled;
-};
-Schedule      g_schedules[MAX_SCHEDULES];
-int           g_scheduleCount   = 0;
-String        g_topicSchedSet;
-String        g_topicSchedDel;
-String        g_topicSchedList;
-int           g_lastCheckedMinute = -1;
-bool          g_timeSynced        = false;
-
 // ============================================================
 // RELAY
 // ============================================================
@@ -153,125 +129,6 @@ void publishPower() {
 }
 
 // ============================================================
-// SCHEDULE (hen gio) — luu NVS, dong bo qua MQTT, tu kich hoat bang NTP
-// ============================================================
-void saveSchedules() {
-  StaticJsonDocument<1024> doc;
-  JsonArray arr = doc.to<JsonArray>();
-  for (int i = 0; i < g_scheduleCount; i++) {
-    JsonObject o = arr.createNestedObject();
-    o["id"]      = g_schedules[i].id;
-    o["hour"]    = g_schedules[i].hour;
-    o["minute"]  = g_schedules[i].minute;
-    o["turnOn"]  = g_schedules[i].turnOn;
-    o["enabled"] = g_schedules[i].enabled;
-  }
-  String out;
-  serializeJson(doc, out);
-  prefs.begin("sched", false);
-  prefs.putString("list", out);
-  prefs.end();
-}
-
-void loadSchedules() {
-  prefs.begin("sched", true);
-  String raw = prefs.getString("list", "[]");
-  prefs.end();
-
-  StaticJsonDocument<1024> doc;
-  if (deserializeJson(doc, raw) != DeserializationError::Ok) return;
-  JsonArray arr = doc.as<JsonArray>();
-  g_scheduleCount = 0;
-  for (JsonObject o : arr) {
-    if (g_scheduleCount >= MAX_SCHEDULES) break;
-    Schedule& s = g_schedules[g_scheduleCount];
-    s.id      = o["id"].as<String>();
-    s.hour    = o["hour"]   | 0;
-    s.minute  = o["minute"] | 0;
-    s.turnOn  = o["turnOn"] | false;
-    s.enabled = o["enabled"] | false;
-    g_scheduleCount++;
-  }
-}
-
-void publishScheduleList() {
-  StaticJsonDocument<1024> doc;
-  JsonArray arr = doc.to<JsonArray>();
-  for (int i = 0; i < g_scheduleCount; i++) {
-    JsonObject o = arr.createNestedObject();
-    o["id"]      = g_schedules[i].id;
-    o["hour"]    = g_schedules[i].hour;
-    o["minute"]  = g_schedules[i].minute;
-    o["turnOn"]  = g_schedules[i].turnOn;
-    o["enabled"] = g_schedules[i].enabled;
-  }
-  String out;
-  serializeJson(doc, out);
-  mqtt.publish(g_topicSchedList.c_str(), out.c_str(), true);
-  Serial.println("Schedule list: " + out);
-}
-
-void upsertSchedule(const String& id, uint8_t hour, uint8_t minute, bool turnOn, bool enabled) {
-  for (int i = 0; i < g_scheduleCount; i++) {
-    if (g_schedules[i].id == id) {
-      g_schedules[i] = {id, hour, minute, turnOn, enabled};
-      saveSchedules();
-      publishScheduleList();
-      return;
-    }
-  }
-  if (g_scheduleCount < MAX_SCHEDULES) {
-    g_schedules[g_scheduleCount++] = {id, hour, minute, turnOn, enabled};
-    saveSchedules();
-    publishScheduleList();
-  }
-}
-
-void deleteSchedule(const String& id) {
-  for (int i = 0; i < g_scheduleCount; i++) {
-    if (g_schedules[i].id == id) {
-      for (int j = i; j < g_scheduleCount - 1; j++) g_schedules[j] = g_schedules[j + 1];
-      g_scheduleCount--;
-      saveSchedules();
-      publishScheduleList();
-      return;
-    }
-  }
-}
-
-void syncTimeNTP() {
-  configTime(7 * 3600, 0, "pool.ntp.org", "time.google.com");  // GMT+7 Vietnam
-  struct tm timeinfo;
-  if (getLocalTime(&timeinfo, 5000)) {
-    g_timeSynced = true;
-    Serial.printf("NTP synced: %02d:%02d:%02d\n", timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec);
-  } else {
-    Serial.println("NTP sync failed");
-  }
-}
-
-void checkSchedules() {
-  if (!g_timeSynced || g_scheduleCount == 0) return;
-  struct tm timeinfo;
-  if (!getLocalTime(&timeinfo, 0)) return;
-
-  if (timeinfo.tm_min == g_lastCheckedMinute) return;  // chi check 1 lan/phut
-  g_lastCheckedMinute = timeinfo.tm_min;
-
-  for (int i = 0; i < g_scheduleCount; i++) {
-    Schedule& s = g_schedules[i];
-    if (s.enabled && s.hour == timeinfo.tm_hour && s.minute == timeinfo.tm_min) {
-      Serial.println("Schedule triggered: " + s.id);
-      relaySet(s.turnOn);
-      publishState();
-      s.enabled = false;  // one-shot, giong hanh vi cu cua Flutter
-      saveSchedules();
-      publishScheduleList();
-    }
-  }
-}
-
-// ============================================================
 // MQTT CALLBACK
 // ============================================================
 void onMqttMessage(char* topic, byte* payload, unsigned int len) {
@@ -302,37 +159,16 @@ void onMqttMessage(char* topic, byte* payload, unsigned int len) {
     String newRoom = doc["room"] | "";
     if (newRoom.length() > 0 && newRoom != g_room) {
       mqtt.unsubscribe(g_topicCmd.c_str());
-      mqtt.unsubscribe(g_topicSchedSet.c_str());
-      mqtt.unsubscribe(g_topicSchedDel.c_str());
-      g_room          = newRoom;
-      g_topicCmd      = "home/devices/light/" + g_room + "/command";
-      g_topicState    = "home/devices/light/" + g_room + "/state";
-      g_topicPower    = "home/devices/light/" + g_room + "/power";
-      g_topicSchedSet  = "home/devices/light/" + g_room + "/schedule/set";
-      g_topicSchedDel  = "home/devices/light/" + g_room + "/schedule/delete";
-      g_topicSchedList = "home/devices/light/" + g_room + "/schedule/list";
+      g_room       = newRoom;
+      g_topicCmd   = "home/devices/light/" + g_room + "/command";
+      g_topicState = "home/devices/light/" + g_room + "/state";
+      g_topicPower = "home/devices/light/" + g_room + "/power";
       prefs.begin("cfg", false);
       prefs.putString("room", g_room);
       prefs.end();
       mqtt.subscribe(g_topicCmd.c_str());
-      mqtt.subscribe(g_topicSchedSet.c_str());
-      mqtt.subscribe(g_topicSchedDel.c_str());
       Serial.println("Room updated: " + g_room);
     }
-    return;
-  }
-
-  String t = String(topic);
-  if (t == g_topicSchedSet) {
-    String id = doc["id"] | "";
-    if (id.length() == 0) return;
-    upsertSchedule(id, doc["hour"] | 0, doc["minute"] | 0,
-                   doc["turnOn"] | false, doc["enabled"] | true);
-    return;
-  }
-  if (t == g_topicSchedDel) {
-    String id = doc["id"] | "";
-    if (id.length() > 0) deleteSchedule(id);
     return;
   }
 
@@ -360,15 +196,12 @@ bool connectMQTT() {
   if (ok) {
     Serial.println(" OK");
     mqtt.subscribe(g_topicCmd.c_str());
-    mqtt.subscribe(g_topicSchedSet.c_str());
-    mqtt.subscribe(g_topicSchedDel.c_str());
 
     // Subscribe config topic theo Device ID cố định — hoạt động cả Android lẫn iOS
     mqtt.subscribe(("home/devices/config/" + g_deviceId).c_str());
     Serial.println("Config topic: home/devices/config/" + g_deviceId);
 
     publishState();
-    publishScheduleList();
 
     StaticJsonDocument<128> log;
     log["message"] = "ESP32-S3 " + g_room + " online";
@@ -614,15 +447,10 @@ void setup() {
   } else {
     Serial.println("Device ID loaded: " + g_deviceId);
   }
-  g_topicCmd       = "home/devices/light/" + g_room + "/command";
-  g_topicState     = "home/devices/light/" + g_room + "/state";
-  g_topicPower     = "home/devices/light/" + g_room + "/power";
-  g_topicSchedSet  = "home/devices/light/" + g_room + "/schedule/set";
-  g_topicSchedDel  = "home/devices/light/" + g_room + "/schedule/delete";
-  g_topicSchedList = "home/devices/light/" + g_room + "/schedule/list";
+  g_topicCmd   = "home/devices/light/" + g_room + "/command";
+  g_topicState = "home/devices/light/" + g_room + "/state";
+  g_topicPower = "home/devices/light/" + g_room + "/power";
   Serial.println("Room: " + g_room);
-
-  loadSchedules();
 
   loadAndConnect();
 
@@ -633,7 +461,6 @@ void setup() {
     mqtt.setKeepAlive(60);
     mqtt.setBufferSize(512);
     connectMQTT();
-    syncTimeNTP();
   } else {
     initBLE();
   }
@@ -684,9 +511,6 @@ void loop() {
     lastPower = now;
     publishPower();
   }
-
-  if (!g_timeSynced) syncTimeNTP();
-  checkSchedules();
 
   // handleVoice() đã xóa
 }
