@@ -23,7 +23,7 @@ class DatabaseHelper {
   Future<Database> _initDB(String filePath) async {
     final dbPath = await getDatabasesPath();
     final path = join(dbPath, filePath);
-    return await openDatabase(path, version: 8, onCreate: _createDB, onUpgrade: _onUpgrade);
+    return await openDatabase(path, version: 9, onCreate: _createDB, onUpgrade: _onUpgrade);
   }
 
   Future _createDB(Database db, int version) async {
@@ -70,6 +70,17 @@ class DatabaseHelper {
         created_at TEXT NOT NULL
       )
     ''');
+    await db.execute('''
+      CREATE TABLE schedules (
+        id TEXT PRIMARY KEY,
+        user_id INTEGER NOT NULL DEFAULT 0,
+        room TEXT NOT NULL,
+        hour INTEGER NOT NULL,
+        minute INTEGER NOT NULL,
+        turn_on INTEGER NOT NULL,
+        enabled INTEGER NOT NULL DEFAULT 1
+      )
+    ''');
   }
 
   Future _onUpgrade(Database db, int oldVersion, int newVersion) async {
@@ -110,6 +121,19 @@ class DatabaseHelper {
     if (oldVersion < 8) {
       await db.execute("ALTER TABLE devices ADD COLUMN state TEXT NOT NULL DEFAULT 'OFF'");
       await db.execute('ALTER TABLE devices ADD COLUMN watt REAL NOT NULL DEFAULT 0');
+    }
+    if (oldVersion < 9) {
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS schedules (
+          id TEXT PRIMARY KEY,
+          user_id INTEGER NOT NULL DEFAULT 0,
+          room TEXT NOT NULL,
+          hour INTEGER NOT NULL,
+          minute INTEGER NOT NULL,
+          turn_on INTEGER NOT NULL,
+          enabled INTEGER NOT NULL DEFAULT 1
+        )
+      ''');
     }
   }
 
@@ -195,6 +219,30 @@ class DatabaseHelper {
     final db = await instance.database;
     await db.update('devices', {'watt': watt},
         where: 'room = ? AND user_id = ?', whereArgs: [room, userId]);
+  }
+
+  // ── Schedules (hẹn giờ) ──────────────────────────────────
+  Future<void> upsertSchedule(Map<String, dynamic> schedule, {required int userId}) async {
+    final db = await instance.database;
+    await db.insert('schedules', {...schedule, 'user_id': userId},
+        conflictAlgorithm: ConflictAlgorithm.replace);
+  }
+
+  Future<List<Map<String, dynamic>>> getSchedulesByRoom(String room, {required int userId}) async {
+    final db = await instance.database;
+    return await db.query('schedules',
+        where: 'room = ? AND user_id = ?', whereArgs: [room, userId]);
+  }
+
+  Future<void> setScheduleEnabled(String id, bool enabled) async {
+    final db = await instance.database;
+    await db.update('schedules', {'enabled': enabled ? 1 : 0},
+        where: 'id = ?', whereArgs: [id]);
+  }
+
+  Future<void> deleteSchedule(String id) async {
+    final db = await instance.database;
+    await db.delete('schedules', where: 'id = ?', whereArgs: [id]);
   }
 
   // ── Users ─────────────────────────────────────────────────

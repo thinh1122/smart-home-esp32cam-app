@@ -64,6 +64,7 @@ class _LivingRoomLightScreenState extends State<LivingRoomLightScreen> {
         setState(() => _isOn = (rows.first['state'] as String?)?.toUpperCase() == 'ON');
       }
     });
+    _loadSchedules();
     _stateSub = MQTTService().deviceStateStream.listen((msg) {
       final topic = msg['topic'] as String;
       final data  = msg['data'] as Map<String, dynamic>;
@@ -104,6 +105,37 @@ class _LivingRoomLightScreenState extends State<LivingRoomLightScreen> {
     });
   }
 
+  // ── Đọc lại danh sách hẹn giờ đã lưu (không mất khi mở lại app) ──
+  Future<void> _loadSchedules() async {
+    final rows = await DatabaseHelper.instance.getSchedulesByRoom(widget.room, userId: AuthService.instance.userId);
+    if (!mounted) return;
+    setState(() {
+      _schedules.clear();
+      for (final r in rows) {
+        final entry = _ScheduleEntry(
+          id: r['id'] as String,
+          turnOn: (r['turn_on'] as int) == 1,
+          hour: r['hour'] as int,
+          minute: r['minute'] as int,
+          enabled: (r['enabled'] as int) == 1,
+        );
+        _schedules.add(entry);
+        if (entry.enabled) _startTimer(entry);
+      }
+    });
+  }
+
+  Future<void> _saveSchedule(_ScheduleEntry entry) {
+    return DatabaseHelper.instance.upsertSchedule({
+      'id': entry.id,
+      'room': widget.room,
+      'hour': entry.hour,
+      'minute': entry.minute,
+      'turn_on': entry.turnOn ? 1 : 0,
+      'enabled': entry.enabled ? 1 : 0,
+    }, userId: AuthService.instance.userId);
+  }
+
   // ── Khởi động timer cho 1 entry ─────────────────────────────
   void _startTimer(_ScheduleEntry entry) {
     entry._timer?.cancel();
@@ -115,6 +147,7 @@ class _LivingRoomLightScreenState extends State<LivingRoomLightScreen> {
         t.cancel();
         _toggleLight(entry.turnOn);
         setState(() => entry.enabled = false);
+        _saveSchedule(entry);
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
           content: Text(entry.turnOn ? 'Đèn đã bật theo hẹn giờ' : 'Đèn đã tắt theo hẹn giờ'),
           backgroundColor: entry.turnOn ? Colors.green : Colors.blueGrey,
@@ -129,7 +162,7 @@ class _LivingRoomLightScreenState extends State<LivingRoomLightScreen> {
   void _addSchedule(int hour, int minute, bool turnOn) {
     _seq++;
     final entry = _ScheduleEntry(
-      id: 'sch_$_seq',
+      id: 'sch_${widget.room}_${DateTime.now().millisecondsSinceEpoch}_$_seq',
       turnOn: turnOn,
       hour: hour,
       minute: minute,
@@ -137,6 +170,7 @@ class _LivingRoomLightScreenState extends State<LivingRoomLightScreen> {
     );
     _startTimer(entry);
     setState(() => _schedules.insert(0, entry));
+    _saveSchedule(entry);
   }
 
   // ── Bật/tắt 1 hẹn giờ ───────────────────────────────────────
@@ -147,6 +181,7 @@ class _LivingRoomLightScreenState extends State<LivingRoomLightScreen> {
     } else {
       entry._timer?.cancel();
     }
+    _saveSchedule(entry);
   }
 
   // ── Xoá 1 hẹn giờ ───────────────────────────────────────────
@@ -155,6 +190,7 @@ class _LivingRoomLightScreenState extends State<LivingRoomLightScreen> {
     if (idx < 0) return;
     _schedules[idx]._timer?.cancel();
     setState(() => _schedules.removeAt(idx));
+    DatabaseHelper.instance.deleteSchedule(id);
   }
 
   void _showTimerPicker() {
