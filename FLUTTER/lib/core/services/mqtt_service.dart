@@ -81,7 +81,8 @@ class MQTTService {
       AppConfig.topicDeviceState,
       AppConfig.topicLogs,
       'home/server/ip',
-      'home/devices/+/+/power',  // ACS712 power data từ ESP32-S3
+      'home/devices/+/+/power',          // ACS712 power data từ ESP32-S3
+      'home/devices/light/+/schedule/list', // Hẹn giờ — ESP32 publish lại retained sau khi sync
     ];
     for (var topic in topics) {
       _client!.subscribe(topic, MqttQos.atLeastOnce);
@@ -130,7 +131,11 @@ class MQTTService {
   /// Gọi sau khi đăng nhập lại để đồng bộ trạng thái đèn mà không cần ESP32 publish mới.
   void resubscribeState() {
     if (!_isConnected || _client == null) return;
-    const stateTopics = [AppConfig.topicDeviceState, 'home/devices/+/+/power'];
+    const stateTopics = [
+      AppConfig.topicDeviceState,
+      'home/devices/+/+/power',
+      'home/devices/light/+/schedule/list',
+    ];
     for (final t in stateTopics) {
       _client!.unsubscribe(t);
       _client!.subscribe(t, MqttQos.atLeastOnce);
@@ -158,7 +163,12 @@ class MQTTService {
         (message.payload as MqttPublishMessage).payload.message,
       );
       try {
-        final data = jsonDecode(payload) as Map<String, dynamic>;
+        final decoded = jsonDecode(payload);
+        if (topic.endsWith('/schedule/list')) {
+          _deviceStateController.add({'topic': topic, 'data': decoded as List<dynamic>});
+          continue;
+        }
+        final data = decoded as Map<String, dynamic>;
         if (topic == 'home/server/ip') {
           final ip   = data['ip']   as String?;
           final port = (data['port'] as num?)?.toInt();
