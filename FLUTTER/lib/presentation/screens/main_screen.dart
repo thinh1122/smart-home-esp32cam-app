@@ -22,10 +22,10 @@ class _MainScreenState extends State<MainScreen> {
   }
 
   static const _tabs = [
-    _TabItem(icon: Icons.home_rounded,         label: 'Home'),
-    _TabItem(icon: Icons.devices_rounded,       label: 'Devices'),
+    _TabItem(icon: Icons.home_rounded,         label: 'Trang chủ'),
+    _TabItem(icon: Icons.devices_rounded,       label: 'Thiết bị'),
     _TabItem(icon: Icons.notifications_rounded, label: 'Thông báo'),
-    _TabItem(icon: Icons.person_rounded,        label: 'Profile'),
+    _TabItem(icon: Icons.person_rounded,        label: 'Tôi'),
   ];
 
   final _pages = const [
