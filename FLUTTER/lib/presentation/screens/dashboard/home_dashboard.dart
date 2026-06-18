@@ -45,6 +45,7 @@ class _HomeDashboardState extends State<HomeDashboard> {
     _connectMQTT();
     DeviceConfigService.instance.aiServerNotifier.addListener(_onEsp32Changed);
     DatabaseHelper.deviceListNotifier.addListener(_loadDevices);
+    DatabaseHelper.deviceStateNotifier.addListener(_loadDevices);
   }
 
   Future<void> _loadDevices() async {
@@ -69,6 +70,7 @@ class _HomeDashboardState extends State<HomeDashboard> {
   void dispose() {
     DeviceConfigService.instance.aiServerNotifier.removeListener(_onEsp32Changed);
     DatabaseHelper.deviceListNotifier.removeListener(_loadDevices);
+    DatabaseHelper.deviceStateNotifier.removeListener(_loadDevices);
     _deviceSub?.cancel();
     _faceSub?.cancel();
     _bboxSub?.cancel();

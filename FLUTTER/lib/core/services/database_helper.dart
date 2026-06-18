@@ -9,6 +9,9 @@ class DatabaseHelper {
   /// Fires whenever a device is inserted or deleted — listeners should reload
   static final deviceListNotifier = ValueNotifier<int>(0);
 
+  /// Fires whenever a device's ON/OFF state changes — listeners reload state map
+  static final deviceStateNotifier = ValueNotifier<int>(0);
+
   DatabaseHelper._init();
 
   Future<Database> get database async {
@@ -185,6 +188,7 @@ class DatabaseHelper {
     final db = await instance.database;
     await db.update('devices', {'state': state},
         where: 'room = ? AND user_id = ?', whereArgs: [room, userId]);
+    deviceStateNotifier.value++;
   }
 
   Future<void> updateDeviceWatt(String room, double watt, {required int userId}) async {

@@ -27,6 +27,7 @@ class _DevicesScreenState extends State<DevicesScreen> {
     super.initState();
     _loadDevices();
     Future.microtask(() => MQTTService().resubscribeState());
+    DatabaseHelper.deviceStateNotifier.addListener(_loadDevices);
 
     _stateSub = MQTTService().deviceStateStream.listen((msg) {
       final topic = msg['topic'] as String;
@@ -75,6 +76,7 @@ class _DevicesScreenState extends State<DevicesScreen> {
 
   @override
   void dispose() {
+    DatabaseHelper.deviceStateNotifier.removeListener(_loadDevices);
     _stateSub?.cancel();
     _powerSub?.cancel();
     super.dispose();
