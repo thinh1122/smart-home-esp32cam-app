@@ -173,7 +173,7 @@ class _DevicesScreenState extends State<DevicesScreen> {
         watt:    watt,
         onToggle: (v) => _toggle(room, v),
         onTap:   () => Navigator.push(context,
-          MaterialPageRoute(builder: (_) => LivingRoomLightScreen(room: room))),
+          MaterialPageRoute(builder: (_) => LivingRoomLightScreen(room: room, initialOn: isOn))),
         onDelete: () => _deleteDevice(d['id'] as int, room, d['ble_mac'] as String? ?? ''),
       ),
     );

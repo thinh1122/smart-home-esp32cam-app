@@ -38,14 +38,15 @@ class _ScheduleEntry {
 
 class LivingRoomLightScreen extends StatefulWidget {
   final String room;
-  const LivingRoomLightScreen({super.key, this.room = 'living_room'});
+  final bool initialOn;
+  const LivingRoomLightScreen({super.key, this.room = 'living_room', this.initialOn = false});
 
   @override
   State<LivingRoomLightScreen> createState() => _LivingRoomLightScreenState();
 }
 
 class _LivingRoomLightScreenState extends State<LivingRoomLightScreen> {
-  bool   _isOn       = false;
+  late bool _isOn;
   double _brightness = 1.0;
   Timer? _brightnessDebounce;
 
@@ -57,6 +58,12 @@ class _LivingRoomLightScreenState extends State<LivingRoomLightScreen> {
   @override
   void initState() {
     super.initState();
+    _isOn = widget.initialOn;
+    DatabaseHelper.instance.getDevicesByRoom(widget.room, userId: AuthService.instance.userId).then((rows) {
+      if (rows.isNotEmpty && mounted) {
+        setState(() => _isOn = (rows.first['state'] as String?)?.toUpperCase() == 'ON');
+      }
+    });
     _stateSub = MQTTService().deviceStateStream.listen((msg) {
       final topic = msg['topic'] as String;
       final data  = msg['data'] as Map<String, dynamic>;
