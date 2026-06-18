@@ -20,7 +20,7 @@ class DatabaseHelper {
   Future<Database> _initDB(String filePath) async {
     final dbPath = await getDatabasesPath();
     final path = join(dbPath, filePath);
-    return await openDatabase(path, version: 7, onCreate: _createDB, onUpgrade: _onUpgrade);
+    return await openDatabase(path, version: 8, onCreate: _createDB, onUpgrade: _onUpgrade);
   }
 
   Future _createDB(Database db, int version) async {
@@ -62,6 +62,8 @@ class DatabaseHelper {
         light_type TEXT,
         mqtt_topic TEXT,
         ble_mac TEXT,
+        state TEXT NOT NULL DEFAULT 'OFF',
+        watt REAL NOT NULL DEFAULT 0,
         created_at TEXT NOT NULL
       )
     ''');
@@ -101,6 +103,10 @@ class DatabaseHelper {
     }
     if (oldVersion < 7) {
       await db.execute('ALTER TABLE logs ADD COLUMN user_id INTEGER NOT NULL DEFAULT 0');
+    }
+    if (oldVersion < 8) {
+      await db.execute("ALTER TABLE devices ADD COLUMN state TEXT NOT NULL DEFAULT 'OFF'");
+      await db.execute('ALTER TABLE devices ADD COLUMN watt REAL NOT NULL DEFAULT 0');
     }
   }
 
@@ -173,6 +179,18 @@ class DatabaseHelper {
     final db = await instance.database;
     await db.delete('devices', where: 'id = ?', whereArgs: [id]);
     deviceListNotifier.value++;
+  }
+
+  Future<void> updateDeviceState(String room, String state, {required int userId}) async {
+    final db = await instance.database;
+    await db.update('devices', {'state': state},
+        where: 'room = ? AND user_id = ?', whereArgs: [room, userId]);
+  }
+
+  Future<void> updateDeviceWatt(String room, double watt, {required int userId}) async {
+    final db = await instance.database;
+    await db.update('devices', {'watt': watt},
+        where: 'room = ? AND user_id = ?', whereArgs: [room, userId]);
   }
 
   // ── Users ─────────────────────────────────────────────────

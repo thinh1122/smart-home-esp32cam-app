@@ -52,6 +52,11 @@ class _HomeDashboardState extends State<HomeDashboard> {
     if (mounted) {
       setState(() {
         _lights = rows.where((d) => d['device_type'] == 'light').toList();
+        for (final d in _lights) {
+          final room = d['room'] as String;
+          _lightStates[room] = (d['state'] as String?)?.toUpperCase() == 'ON';
+          _lightWatts[room]  = (d['watt'] as num?)?.toDouble() ?? 0;
+        }
       });
     }
   }
@@ -89,6 +94,7 @@ class _HomeDashboardState extends State<HomeDashboard> {
       } else if (parts.length >= 4) {
         final room = parts[3];
         setState(() => _lightStates[room] = state == 'ON');
+        DatabaseHelper.instance.updateDeviceState(room, state, userId: AuthService.instance.userId);
       }
     });
 
@@ -111,10 +117,9 @@ class _HomeDashboardState extends State<HomeDashboard> {
       final parts = topic.split('/');
       if (parts.length >= 4) {
         final room = parts[3];
-        final validRooms = _lights.map((d) => d['room'] as String).toSet();
-        if (!validRooms.contains(room)) return;
         final watt = (data['watt'] as num?)?.toDouble() ?? 0;
         setState(() => _lightWatts[room] = watt);
+        DatabaseHelper.instance.updateDeviceWatt(room, watt, userId: AuthService.instance.userId);
       }
     });
 

@@ -35,8 +35,10 @@ class _DevicesScreenState extends State<DevicesScreen> {
         final parts = topic.split('/');
         if (parts.length >= 4) {
           final room = parts[3];
-          final on = (data['state'] as String?)?.toUpperCase() == 'ON';
+          final stateStr = (data['state'] as String?)?.toUpperCase() ?? 'OFF';
+          final on = stateStr == 'ON';
           if (mounted) setState(() => _states[room] = on);
+          DatabaseHelper.instance.updateDeviceState(room, stateStr, userId: AuthService.instance.userId);
         }
       }
     });
@@ -49,6 +51,7 @@ class _DevicesScreenState extends State<DevicesScreen> {
         final room = parts[3];
         final watt = (data['watt'] as num?)?.toDouble() ?? 0;
         if (mounted) setState(() => _watts[room] = watt);
+        DatabaseHelper.instance.updateDeviceWatt(room, watt, userId: AuthService.instance.userId);
       }
     });
   }
@@ -61,6 +64,11 @@ class _DevicesScreenState extends State<DevicesScreen> {
         final validRooms = rows.map((d) => d['room'] as String).toSet();
         _watts.removeWhere((room, _) => !validRooms.contains(room));
         _states.removeWhere((room, _) => !validRooms.contains(room));
+        for (final d in rows) {
+          final room = d['room'] as String;
+          _states[room] = (d['state'] as String?)?.toUpperCase() == 'ON';
+          _watts[room]  = (d['watt'] as num?)?.toDouble() ?? 0;
+        }
       });
     }
   }
