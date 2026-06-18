@@ -83,6 +83,8 @@ class _DevicesScreenState extends State<DevicesScreen> {
   void _toggle(String room, bool val) {
     setState(() => _states[room] = val);
     MQTTService().controlLight(room, val);
+    // Lưu ngay (optimistic) — không chờ ESP32 phản hồi qua MQTT, tránh mất state nếu thoát app quá nhanh
+    DatabaseHelper.instance.updateDeviceState(room, val ? 'ON' : 'OFF', userId: AuthService.instance.userId);
   }
 
   @override

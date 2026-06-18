@@ -156,6 +156,7 @@ class _HomeDashboardState extends State<HomeDashboard> {
   void _toggleLight(String room, bool v) {
     setState(() => _lightStates[room] = v);
     MQTTService().controlLight(room, v);
+    DatabaseHelper.instance.updateDeviceState(room, v ? 'ON' : 'OFF', userId: AuthService.instance.userId);
   }
 
   void _toggleDoor(bool v) {

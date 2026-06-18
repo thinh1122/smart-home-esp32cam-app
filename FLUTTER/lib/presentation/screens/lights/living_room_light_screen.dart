@@ -3,6 +3,8 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/services/mqtt_service.dart';
+import '../../../core/services/database_helper.dart';
+import '../../../core/services/auth_service.dart';
 import '../../widgets/painters/brightness_ring_painter.dart';
 
 // Model 1 hẹn giờ (lưu lịch sử)
@@ -59,8 +61,10 @@ class _LivingRoomLightScreenState extends State<LivingRoomLightScreen> {
       final topic = msg['topic'] as String;
       final data  = msg['data'] as Map<String, dynamic>;
       if (topic == 'home/devices/light/${widget.room}/state') {
-        final on = (data['state'] as String?)?.toUpperCase() == 'ON';
+        final stateStr = (data['state'] as String?)?.toUpperCase() ?? 'OFF';
+        final on = stateStr == 'ON';
         if (mounted) setState(() => _isOn = on);
+        DatabaseHelper.instance.updateDeviceState(widget.room, stateStr, userId: AuthService.instance.userId);
       }
     });
   }
@@ -76,6 +80,7 @@ class _LivingRoomLightScreenState extends State<LivingRoomLightScreen> {
   void _toggleLight(bool v) {
     setState(() => _isOn = v);
     MQTTService().controlLight(widget.room, v);
+    DatabaseHelper.instance.updateDeviceState(widget.room, v ? 'ON' : 'OFF', userId: AuthService.instance.userId);
     if (v) {
       setState(() => _brightness = 1.0);
       _publishBrightness(1.0);
