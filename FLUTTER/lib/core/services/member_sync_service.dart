@@ -11,8 +11,9 @@ class MemberSyncService {
   // Pull members từ AI server về SQLite local
   Future<void> syncFromServer() async {
     try {
+      final userId = AuthService.instance.userId;
       final res = await http
-          .get(Uri.parse(AppConfig.membersUrl))
+          .get(Uri.parse('${AppConfig.membersUrl}?user_id=$userId'))
           .timeout(const Duration(seconds: 6));
       if (res.statusCode != 200) return;
 
@@ -48,6 +49,7 @@ class MemberSyncService {
             headers: {'Content-Type': 'application/json'},
             body: jsonEncode({
               'id': id,
+              'user_id': AuthService.instance.userId,
               'name': name,
               'role': role,
               'avatar': avatar,
@@ -72,7 +74,7 @@ class MemberSyncService {
           .post(
             Uri.parse(AppConfig.deleteUrl),
             headers: {'Content-Type': 'application/json'},
-            body: jsonEncode({'id': id, 'name': name}),
+            body: jsonEncode({'id': id, 'name': name, 'user_id': AuthService.instance.userId}),
           )
           .timeout(const Duration(seconds: 6));
       return res.statusCode == 200;

@@ -187,12 +187,6 @@ void handleVoice() {
     }
   }
 
-  int16_t maxAbs = 0;
-  for (size_t i = 0; i < AUDIO_BUF_SIZE; i++) {
-    int16_t v = audioBuf[i] < 0 ? -audioBuf[i] : audioBuf[i];
-    if (v > maxAbs) maxAbs = v;
-  }
-  Serial.printf("audio peak: %d\n", maxAbs);
 
   // Inference
   signal_t sig;
@@ -206,12 +200,10 @@ void handleVoice() {
     return;
   }
 
-  for (size_t ix = 0; ix < EI_CLASSIFIER_LABEL_COUNT; ix++) {
-    Serial.printf("  %s: %.4f\n", result.classification[ix].label, result.classification[ix].value);
-  }
-
   float confOn  = result.classification[1].value;  // "On"
   float confOff = result.classification[0].value;  // "Off"
+
+  Serial.printf("On=%.2f Off=%.2f\n", confOn, confOff);
 
   // Chỉ publish khi đã biết room
   if (topicCmd.length() == 0) {

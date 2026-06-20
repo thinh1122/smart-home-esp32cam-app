@@ -353,10 +353,11 @@ def _capturer():
         ts2 = int(now * 1000)
         if best_name:
             info = li.get(best_name, {})
-            print(f"✅ {best_name} ({best_score*100:.0f}%) — cooldown {COOLDOWN_SECONDS}s")
+            display_name = info.get('name', best_name)
+            print(f"✅ {display_name} ({best_score*100:.0f}%) — cooldown {COOLDOWN_SECONDS}s")
             publish(TOPIC_FACE_RESULT, {
-                'matched': True, 'name': best_name,
-                'id': info.get('id', ''), 'role': info.get('role', ''),
+                'matched': True, 'name': display_name,
+                'id': info.get('id', ''), 'user_id': info.get('user_id', ''), 'role': info.get('role', ''),
                 'confidence': round(best_score, 3), 'ts': ts2,
             })
             # Cooldown — vẫn capture để drain ESP32 buffer, không xử lý AI
@@ -396,10 +397,11 @@ def init_db():
     conn = get_db()
     conn.execute('''
         CREATE TABLE IF NOT EXISTS members (
-            id TEXT PRIMARY KEY, name TEXT NOT NULL,
+            id TEXT NOT NULL, user_id TEXT NOT NULL DEFAULT '0', name TEXT NOT NULL,
             role TEXT DEFAULT "Thành viên",
             avatar TEXT, pose1 TEXT, pose2 TEXT, pose3 TEXT,
-            enrolled_at TEXT
+            enrolled_at TEXT,
+            PRIMARY KEY (id, user_id)
         )
     ''')
     conn.commit(); conn.close()
@@ -409,6 +411,7 @@ def load_known_faces():
     nt, nn, ni = [], [], {}
     conn = get_db()
     for row in conn.execute("SELECT * FROM members").fetchall():
+        key = f"{row['user_id']}_{row['name']}"
         for p in ['pose1', 'pose2', 'pose3']:
             path = row[p]
             if path and os.path.exists(path):
@@ -419,8 +422,8 @@ def load_known_faces():
                         best = max(faces, key=lambda f: f['score'])
                         t = extract_template(bgr, best['bbox'])
                         if t is not None:
-                            nt.append(t); nn.append(row['name'])
-                            ni[row['name']] = {'id': row['id'], 'role': row['role']}
+                            nt.append(t); nn.append(key)
+                            ni[key] = {'id': row['id'], 'user_id': row['user_id'], 'role': row['role'], 'name': row['name']}
     conn.close()
     with lock:
         known_templates, known_names, known_info = nt, nn, ni
@@ -432,8 +435,9 @@ def load_known_faces():
 # ============================================================
 @app.route('/members', methods=['GET'])
 def get_members():
+    user_id = str(request.args.get('user_id', '0'))
     conn = get_db()
-    rows = conn.execute("SELECT id, name, role, avatar, enrolled_at FROM members").fetchall()
+    rows = conn.execute("SELECT id, name, role, avatar, enrolled_at FROM members WHERE user_id=?", (user_id,)).fetchall()
     conn.close()
     return jsonify({'members': [dict(r) for r in rows]}), 200
 
@@ -442,6 +446,7 @@ def enroll():
     data = request.json
     name    = data['name'].strip()
     m_id    = str(data.get('id', ''))
+    user_id = str(data.get('user_id', '0'))
     role    = data.get('role', 'Thành viên')
     avatar  = data.get('avatar', '')
     pose    = int(data.get('pose', 1))
@@ -450,15 +455,15 @@ def enroll():
     if bgr is None or not detect_faces(bgr):
         return jsonify({'error': 'No face found in image'}), 400
     os.makedirs(IMG_DIR, exist_ok=True)
-    path = os.path.join(IMG_DIR, f"{m_id}_pose{pose}.jpg")
+    path = os.path.join(IMG_DIR, f"{user_id}_{m_id}_pose{pose}.jpg")
     cv2.imwrite(path, bgr)
     conn = get_db()
-    if conn.execute("SELECT id FROM members WHERE id=?", (m_id,)).fetchone():
-        conn.execute(f"UPDATE members SET name=?,role=?,avatar=?,pose{pose}=? WHERE id=?",
-                     (name, role, avatar, path, m_id))
+    if conn.execute("SELECT id FROM members WHERE id=? AND user_id=?", (m_id, user_id)).fetchone():
+        conn.execute(f"UPDATE members SET name=?,role=?,avatar=?,pose{pose}=? WHERE id=? AND user_id=?",
+                     (name, role, avatar, path, m_id, user_id))
     else:
-        conn.execute(f"INSERT INTO members (id,name,role,avatar,pose{pose},enrolled_at) VALUES (?,?,?,?,?,?)",
-                     (m_id, name, role, avatar, path, datetime.now().isoformat()))
+        conn.execute(f"INSERT INTO members (id,user_id,name,role,avatar,pose{pose},enrolled_at) VALUES (?,?,?,?,?,?,?)",
+                     (m_id, user_id, name, role, avatar, path, datetime.now().isoformat()))
     conn.commit(); conn.close()
     load_known_faces()
     return jsonify({'message': 'Enrolled', 'pose': pose}), 200
@@ -467,13 +472,14 @@ def enroll():
 def delete_member():
     data = request.json
     u_id = data.get('id', '').strip()
+    user_id = str(data.get('user_id', '0'))
     conn = get_db()
-    row = conn.execute("SELECT * FROM members WHERE id=?", (u_id,)).fetchone()
+    row = conn.execute("SELECT * FROM members WHERE id=? AND user_id=?", (u_id, user_id)).fetchone()
     if not row:
         conn.close(); return jsonify({'error': 'Not found'}), 404
     for p in ['pose1', 'pose2', 'pose3']:
         if row[p] and os.path.exists(row[p]): os.remove(row[p])
-    conn.execute("DELETE FROM members WHERE id=?", (u_id,))
+    conn.execute("DELETE FROM members WHERE id=? AND user_id=?", (u_id, user_id))
     conn.commit(); conn.close()
     load_known_faces()
     return jsonify({'message': 'Deleted'}), 200

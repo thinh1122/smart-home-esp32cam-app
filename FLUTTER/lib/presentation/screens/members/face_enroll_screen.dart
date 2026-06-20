@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:http/http.dart' as http;
 import '../../../core/config/app_config.dart';
+import '../../../core/services/auth_service.dart';
 import '../../../core/theme/app_theme.dart';
 
 class FaceEnrollScreen extends StatefulWidget {
@@ -72,6 +73,7 @@ class _FaceEnrollScreenState extends State<FaceEnrollScreen> {
       for (int pose = 0; pose < 3; pose++) {
         final body = jsonEncode({
           'id': widget.memberId,
+          'user_id': AuthService.instance.userId,
           'name': widget.memberName,
           'role': widget.memberRole,
           'image_base64': _base64s[pose],

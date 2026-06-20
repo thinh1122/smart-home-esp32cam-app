@@ -35,6 +35,11 @@ Thumbs.db
 **/faces_registry.db
 **/haarcascades/
 
+# Face recognition data — dữ liệu cá nhân (ảnh khuôn mặt), không nên commit
+ESP32CAM/members.db
+ESP32CAM/img/
+ESP32CAM/temp/
+
 # iOS build artifacts
 FLUTTER/*.zip
 FLUTTER/ios-*/
