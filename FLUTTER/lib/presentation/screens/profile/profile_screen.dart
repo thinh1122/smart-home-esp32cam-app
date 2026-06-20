@@ -4,7 +4,6 @@ import '../../../core/services/database_helper.dart';
 import '../../../core/services/mqtt_service.dart';
 import '../../../core/services/auth_service.dart';
 import '../../../core/services/avatar_service.dart';
-import '../../../core/services/device_config_service.dart';
 import '../lights/living_room_light_screen.dart';
 import '../members/members_screen.dart';
 
@@ -132,13 +131,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 label: 'Thành viên',
                 value: '$_memberCount người',
                 color: ac.accentLight,
-                onTap: _memberCount > 0 ? _onTapMembers : null,
+                onTap: _onTapMembers,
               ),
             ]),
-            const SizedBox(height: 20),
-            _sectionTitle('Cấu hình mạng', ac),
-            const SizedBox(height: 12),
-            _buildCameraUrlTile(ac),
             const SizedBox(height: 20),
             _sectionTitle('Ứng dụng', ac),
             const SizedBox(height: 12),
@@ -501,160 +496,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
             borderRadius: BorderRadius.circular(12),
             borderSide: BorderSide.none),
         contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-      ),
-    );
-  }
-
-  Widget _buildCameraUrlTile(AC ac) {
-    final cfg = DeviceConfigService.instance;
-    final hasUrl = cfg.hasEsp32Ip;
-    return Container(
-      decoration: BoxDecoration(
-        color: ac.card,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: ac.border),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Container(
-                  width: 36, height: 36,
-                  decoration: BoxDecoration(
-                    color: ac.cameraColor.withOpacity(0.12),
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: Icon(Icons.videocam_rounded, color: ac.cameraColor, size: 18),
-                ),
-                const SizedBox(width: 14),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text('URL Camera', style: TextStyle(color: ac.textPrimary, fontSize: 14)),
-                      Text(
-                        hasUrl ? '${cfg.esp32Ip}:${cfg.esp32Port}' : 'Tự động (cùng mạng WiFi)',
-                        style: TextStyle(
-                          color: hasUrl ? ac.cameraColor : ac.textSecondary,
-                          fontSize: 11,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                GestureDetector(
-                  onTap: _showCameraUrlDialog,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                    decoration: BoxDecoration(
-                      color: ac.cameraColor.withOpacity(0.12),
-                      borderRadius: BorderRadius.circular(10),
-                      border: Border.all(color: ac.cameraColor.withOpacity(0.3)),
-                    ),
-                    child: Text('Sửa', style: TextStyle(color: ac.cameraColor, fontSize: 12, fontWeight: FontWeight.bold)),
-                  ),
-                ),
-              ],
-            ),
-            if (hasUrl) ...[
-              const SizedBox(height: 10),
-              GestureDetector(
-                onTap: () async {
-                  await cfg.saveEsp32Ip('', port: 81);
-                  setState(() {});
-                  if (mounted) ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Đã xoá — dùng mDNS tự động')));
-                },
-                child: Row(
-                  children: [
-                    Icon(Icons.refresh_rounded, color: ac.textDim, size: 14),
-                    const SizedBox(width: 6),
-                    Text('Xoá để dùng tự động (cùng mạng)',
-                        style: TextStyle(color: ac.textDim, fontSize: 11)),
-                  ],
-                ),
-              ),
-            ],
-          ],
-        ),
-      ),
-    );
-  }
-
-  void _showCameraUrlDialog() {
-    final ac = AC.of(context);
-    final cfg = DeviceConfigService.instance;
-    final ctrl = TextEditingController(
-      text: cfg.hasEsp32Ip ? '${cfg.esp32Ip}:${cfg.esp32Port}' : '',
-    );
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: ac.card,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: Text('URL Camera', style: TextStyle(color: ac.textPrimary, fontWeight: FontWeight.bold)),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('Nhập IP local hoặc URL Ngrok:', style: TextStyle(color: ac.textSecondary, fontSize: 12)),
-            const SizedBox(height: 4),
-            Text('VD: 192.168.1.100:81\nVD: abc123.ngrok.io',
-                style: TextStyle(color: ac.textDim, fontSize: 11)),
-            const SizedBox(height: 12),
-            TextField(
-              controller: ctrl,
-              style: TextStyle(color: ac.textPrimary),
-              decoration: InputDecoration(
-                hintText: 'IP:port hoặc URL ngrok',
-                hintStyle: TextStyle(color: ac.textDim),
-                filled: true,
-                fillColor: ac.cardElevated,
-                border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide.none),
-                prefixIcon: Icon(Icons.link_rounded, color: ac.cameraColor, size: 18),
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: Text('Huỷ', style: TextStyle(color: ac.textSecondary)),
-          ),
-          ElevatedButton(
-            onPressed: () async {
-              final input = ctrl.text.trim();
-              if (input.isEmpty) { Navigator.pop(ctx); return; }
-              String ip; int port = 81;
-              if (input.contains(':') && !input.startsWith('http')) {
-                final parts = input.split(':');
-                ip = parts[0];
-                port = int.tryParse(parts[1]) ?? 81;
-              } else {
-                ip = input.replaceAll(RegExp(r'https?://'), '');
-                port = 80;
-              }
-              await cfg.saveEsp32Ip(ip, port: port);
-              if (!mounted) return;
-              Navigator.pop(ctx);
-              setState(() {});
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text('Đã lưu: $ip:$port'), backgroundColor: ac.success));
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: ac.cameraColor.withOpacity(0.2),
-              foregroundColor: ac.cameraColor,
-              elevation: 0,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-            ),
-            child: const Text('Lưu'),
-          ),
-        ],
       ),
     );
   }
