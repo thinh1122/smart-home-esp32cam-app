@@ -5,6 +5,7 @@ import '../../../core/services/mqtt_service.dart';
 import '../../../core/services/auth_service.dart';
 import '../../../core/services/avatar_service.dart';
 import '../lights/living_room_light_screen.dart';
+import '../camera/front_door_cam_screen.dart';
 import '../members/members_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
@@ -89,7 +90,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   void _onTapCamera() {
-    Navigator.of(context).popUntil((r) => r.isFirst);
+    Navigator.push(context, MaterialPageRoute(builder: (_) => const FrontDoorCamScreen()));
   }
 
   void _onTapMembers() {
@@ -124,7 +125,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 label: 'Camera',
                 value: '$_cameraCount thiết bị',
                 color: ac.cameraColor,
-                onTap: _cameraCount > 0 ? _onTapCamera : null,
+                onTap: _onTapCamera,
               ),
               _InfoTile(
                 icon: Icons.people_alt_rounded,

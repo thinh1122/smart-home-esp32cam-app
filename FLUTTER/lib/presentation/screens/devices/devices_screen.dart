@@ -5,6 +5,7 @@ import '../../../core/services/mqtt_service.dart';
 import '../../../core/services/database_helper.dart';
 import '../../../core/services/auth_service.dart';
 import '../lights/living_room_light_screen.dart';
+import '../camera/front_door_cam_screen.dart';
 import 'add_device_screen.dart';
 
 class DevicesScreen extends StatefulWidget {
@@ -211,7 +212,8 @@ class _DevicesScreenState extends State<DevicesScreen> {
         watt:      0,
         showSwitch: false,
         onToggle:  (_) {},
-        onTap:     () {},
+        onTap:     () => Navigator.push(context,
+          MaterialPageRoute(builder: (_) => const FrontDoorCamScreen())),
         onDelete:  () => _deleteDevice(d['id'] as int, d['room'] as String, d['ble_mac'] as String? ?? ''),
       ),
     );
