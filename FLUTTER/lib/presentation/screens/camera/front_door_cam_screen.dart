@@ -142,16 +142,12 @@ class _FrontDoorCamScreenState extends State<FrontDoorCamScreen> {
           slivers: [
             SliverToBoxAdapter(child: _buildHeader(ac)),
             SliverToBoxAdapter(child: const SizedBox(height: 20)),
-            SliverToBoxAdapter(child: _buildCameraFeed(ac)),
-            SliverToBoxAdapter(child: const SizedBox(height: 16)),
             SliverToBoxAdapter(
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 20),
                 child: _buildCameraUrlTile(ac),
               ),
             ),
-            SliverToBoxAdapter(child: const SizedBox(height: 20)),
-            SliverToBoxAdapter(child: _buildActionButtons(ac)),
             SliverToBoxAdapter(child: const SizedBox(height: 24)),
             SliverToBoxAdapter(child: _buildActivitySection(ac)),
             SliverToBoxAdapter(child: const SizedBox(height: 24)),
@@ -579,7 +575,7 @@ class _FrontDoorCamScreenState extends State<FrontDoorCamScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('URL Camera', style: TextStyle(color: ac.textPrimary, fontSize: 14)),
+                      Text('Cấu hình mạng', style: TextStyle(color: ac.textPrimary, fontSize: 14)),
                       Text(
                         hasUrl ? '${cfg.esp32Ip}:${cfg.esp32Port}' : 'Tự động (cùng mạng WiFi)',
                         style: TextStyle(
@@ -640,7 +636,7 @@ class _FrontDoorCamScreenState extends State<FrontDoorCamScreen> {
       builder: (ctx) => AlertDialog(
         backgroundColor: ac.card,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: Text('URL Camera', style: TextStyle(color: ac.textPrimary, fontWeight: FontWeight.bold)),
+        title: Text('Cấu hình mạng', style: TextStyle(color: ac.textPrimary, fontWeight: FontWeight.bold)),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
