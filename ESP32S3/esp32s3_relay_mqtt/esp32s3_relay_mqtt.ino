@@ -498,9 +498,11 @@ void loop() {
   if (WiFi.status() != WL_CONNECTED) return;
 
   if (!mqtt.connected()) {
-    unsigned long now = millis();
-    if (now - lastReconnect >= 3000) {
-      lastReconnect = now;
+    unsigned long nowReconnect = millis();
+    static unsigned long reconnectJitter = random(0, 3000);
+    if (nowReconnect - lastReconnect >= 3000 + reconnectJitter) {
+      lastReconnect = nowReconnect;
+      reconnectJitter = random(0, 3000);
       connectMQTT();
     }
   }

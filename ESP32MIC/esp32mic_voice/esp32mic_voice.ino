@@ -31,8 +31,9 @@
 #define TOPIC_RESET_WIFI   "home/devices/voice/reset_wifi"
 #define TOPIC_STATUS       "home/devices/voice/status"
 
-#define VOICE_THRESHOLD_ON   0.5f
-#define VOICE_THRESHOLD_OFF  0.7f
+#define VOICE_THRESHOLD_ON      0.9f
+#define VOICE_THRESHOLD_OFF     0.7f
+#define VOICE_MIN_MARGIN        0.3f   // chênh lệch tối thiểu giữa ON và OFF để tránh nhầm lẫn nguy hiểm
 
 #define I2S_SCK  5
 #define I2S_WS   6
@@ -55,6 +56,8 @@ String currentRoom = "";   // room tự detect từ retained state
 String topicCmd    = "";   // topic publish lệnh
 
 unsigned long lastReconnect = 0;
+String lastVoiceCmd = "";
+unsigned long lastVoicePublish = 0;
 
 // ============================================================
 // MQTT CALLBACK — nhận retained state để detect room
@@ -93,10 +96,9 @@ void onMqttMessage(char* topic, byte* payload, unsigned int len) {
 void connectWiFi() {
   WiFiManager wm;
   wm.setConnectTimeout(30);
-  wm.setConfigPortalTimeout(120);
+  wm.setConfigPortalTimeout(30);
 
   Serial.println("WiFiManager starting...");
-  Serial.println("Giu nut BOOT 3s ngay luc nay de vao AP mode doi WiFi");
   if (!wm.autoConnect(AP_NAME)) {
     Serial.println("WiFi failed — restarting...");
     delay(3000);
@@ -185,6 +187,13 @@ void handleVoice() {
     }
   }
 
+  int16_t maxAbs = 0;
+  for (size_t i = 0; i < AUDIO_BUF_SIZE; i++) {
+    int16_t v = audioBuf[i] < 0 ? -audioBuf[i] : audioBuf[i];
+    if (v > maxAbs) maxAbs = v;
+  }
+  Serial.printf("audio peak: %d\n", maxAbs);
+
   // Inference
   signal_t sig;
   sig.total_length = AUDIO_BUF_SIZE;
@@ -197,10 +206,12 @@ void handleVoice() {
     return;
   }
 
+  for (size_t ix = 0; ix < EI_CLASSIFIER_LABEL_COUNT; ix++) {
+    Serial.printf("  %s: %.4f\n", result.classification[ix].label, result.classification[ix].value);
+  }
+
   float confOn  = result.classification[1].value;  // "On"
   float confOff = result.classification[0].value;  // "Off"
-
-  Serial.printf("On=%.2f Off=%.2f\n", confOn, confOff);
 
   // Chỉ publish khi đã biết room
   if (topicCmd.length() == 0) {
@@ -210,12 +221,25 @@ void handleVoice() {
 
   if (!mqtt.connected()) return;
 
-  if (confOn > VOICE_THRESHOLD_ON && confOn > confOff) {
-    Serial.println(">>> Voice ON → " + topicCmd);
-    mqtt.publish(topicCmd.c_str(), "{\"state\":\"ON\",\"src\":\"voice\"}");
-  } else if (confOff > VOICE_THRESHOLD_OFF && confOff > confOn) {
-    Serial.println(">>> Voice OFF → " + topicCmd);
-    mqtt.publish(topicCmd.c_str(), "{\"state\":\"OFF\",\"src\":\"voice\"}");
+  unsigned long now = millis();
+  bool cooldownPassed = (now - lastVoicePublish) > 3000;
+
+  float margin = fabs(confOn - confOff);
+
+  if (confOn > VOICE_THRESHOLD_ON && confOn > confOff && margin > VOICE_MIN_MARGIN) {
+    if (lastVoiceCmd != "ON" || cooldownPassed) {
+      Serial.println(">>> Voice ON → " + topicCmd);
+      mqtt.publish(topicCmd.c_str(), "{\"state\":\"ON\",\"src\":\"voice\"}");
+      lastVoiceCmd = "ON";
+      lastVoicePublish = now;
+    }
+  } else if (confOff > VOICE_THRESHOLD_OFF && confOff > confOn && margin > VOICE_MIN_MARGIN) {
+    if (lastVoiceCmd != "OFF" || cooldownPassed) {
+      Serial.println(">>> Voice OFF → " + topicCmd);
+      mqtt.publish(topicCmd.c_str(), "{\"state\":\"OFF\",\"src\":\"voice\"}");
+      lastVoiceCmd = "OFF";
+      lastVoicePublish = now;
+    }
   }
 }
 
@@ -240,6 +264,7 @@ void setup() {
   wifiClient.setInsecure();
   mqtt.setServer(MQTT_BROKER, MQTT_PORT);
   mqtt.setBufferSize(512);
+  mqtt.setKeepAlive(60);
   mqtt.setCallback(onMqttMessage);
   connectMQTT();
 
@@ -259,9 +284,11 @@ void loop() {
   }
 
   if (!mqtt.connected()) {
-    unsigned long now = millis();
-    if (now - lastReconnect >= 3000) {
-      lastReconnect = now;
+    unsigned long nowReconnect = millis();
+    static unsigned long reconnectJitter = random(0, 3000);
+    if (nowReconnect - lastReconnect >= 3000 + reconnectJitter) {
+      lastReconnect = nowReconnect;
+      reconnectJitter = random(0, 3000);
       connectMQTT();
     }
   }

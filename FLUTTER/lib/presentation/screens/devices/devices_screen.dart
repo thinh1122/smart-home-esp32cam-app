@@ -103,8 +103,7 @@ class _DevicesScreenState extends State<DevicesScreen> {
           children: [
             _buildHeader(ac),
             const SizedBox(height: 8),
-            _buildSummary(ac, lights),
-            const SizedBox(height: 24),
+            const SizedBox(height: 16),
             Expanded(
               child: _devices.isEmpty
                 ? _buildEmpty(ac)
@@ -375,40 +374,6 @@ class _DevicesScreenState extends State<DevicesScreen> {
     );
   }
 
-  Widget _buildSummary(AC ac, List<Map<String, dynamic>> lights) {
-    final onCount   = lights.where((d) => _states[d['room']] == true).length;
-    final total     = _devices.length;
-    final totalWatt = _watts.values.fold(0.0, (a, b) => a + b);
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20),
-      child: Row(
-        children: [
-          _summaryChip(ac.accentLight, Icons.devices_rounded, '$onCount/$total bật'),
-          const SizedBox(width: 10),
-          _summaryChip(ac.lightColor, Icons.bolt_rounded, '${totalWatt.round()}W'),
-        ],
-      ),
-    );
-  }
-
-  Widget _summaryChip(Color color, IconData icon, String label) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-      decoration: BoxDecoration(
-        color: color.withOpacity(0.12),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: color.withOpacity(0.25)),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, color: color, size: 15),
-          const SizedBox(width: 6),
-          Text(label, style: TextStyle(color: color, fontSize: 13, fontWeight: FontWeight.w600)),
-        ],
-      ),
-    );
-  }
 }
 
 class _DeviceCard extends StatelessWidget {

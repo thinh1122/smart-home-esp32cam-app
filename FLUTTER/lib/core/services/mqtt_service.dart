@@ -198,6 +198,7 @@ class MQTTService {
         } else if (topic.endsWith('/power')) {
           _devicePowerController.add({'topic': topic, 'data': data});
         } else if (topic.startsWith('home/devices/')) {
+          debugPrint('MQTT recv state → $topic: $data');
           _deviceStateController.add({'topic': topic, 'data': data});
         } else if (topic.startsWith('home/logs/')) {
           _systemLogsController.add({'topic': topic, 'data': data});
@@ -220,8 +221,9 @@ class MQTTService {
   void _onDisconnected() {
     _isConnected = false;
     connectionNotifier.value = false;
-    // Retry ngắn hơn: 3s lần 1, sau đó 10s
-    Future.delayed(const Duration(seconds: 3), () {
+    // Jitter ngẫu nhiên 0-3s tránh dồn dập reconnect cùng lúc với ESP32 khác, tránh broker từ chối hàng loạt
+    final jitterMs = 3000 + (DateTime.now().millisecondsSinceEpoch % 3000);
+    Future.delayed(Duration(milliseconds: jitterMs), () {
       if (!_isConnected) connect();
     });
   }
