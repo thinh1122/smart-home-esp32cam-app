@@ -39,7 +39,7 @@ pool.on('error', (err) => {
 // ============================================================
 const mqttOptions = {
   host: process.env.HIVEMQ_HOST,
-  port: parseInt(process.HIVEMQ_PORT) || 8883,
+  port: parseInt(process.env.HIVEMQ_PORT) || 8883,
   protocol: process.env.HIVEMQ_USE_TLS === 'true' ? 'mqtts' : 'mqtt',
   username: process.env.HIVEMQ_USERNAME,
   password: process.env.HIVEMQ_PASSWORD,

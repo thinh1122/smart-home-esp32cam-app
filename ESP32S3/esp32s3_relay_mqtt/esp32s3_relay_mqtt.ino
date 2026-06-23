@@ -27,11 +27,21 @@
 // ============================================================
 // CONFIG
 // ============================================================
-#define MQTT_BROKER     "93a7685af2254d02a616baa58c6ae86e.s1.eu.hivemq.cloud"
+#define MQTT_BROKER     "1ef998ab22bd4df3bc84b3aea3525fa7.s1.eu.hivemq.cloud"
 #define MQTT_PORT       8883
-#define MQTT_USER       "smarthome"
-#define MQTT_PASS       "SmartHome@2026"
+#define MQTT_USER       "phungthinh"
+#define MQTT_PASS       "@Phungthinh2611"
 #define MQTT_CLIENT_ID  "esp32s3_relay_01"
+
+#define DOOR_UNLOCK_PIN 4
+#define DOOR_LOCK_PIN   5
+#define DOOR_UNLOCK_TIME_MS 3000
+#define DOOR_LOCK_TIME_MS   2800
+#define DOOR_DEAD_TIME_MS  300
+
+#define TOPIC_FACE_RESULT "home/face_recognition/result"
+#define TOPIC_DOOR_CMD    "home/devices/door/front_door/command"
+#define TOPIC_DOOR_STATE  "home/devices/door/front_door/state"
 
 #define RELAY_PIN       1    // GPIO1 → Relay IN
 #define ACS712_PIN      7    // GPIO7 → ACS712 OUT (ADC)
@@ -77,6 +87,7 @@ String g_topicPower;
 String g_deviceId  = "";   // ID cố định từ WiFi MAC, lưu NVS, dùng làm config topic
 
 bool          relayState     = false;
+bool          doorLocked     = true;
 unsigned long lastPower      = 0;
 unsigned long lastReconnect  = 0;
 unsigned long bootPressStart = 0;
@@ -89,6 +100,44 @@ void relaySet(bool on) {
   relayState = on;
   digitalWrite(RELAY_PIN, on ? HIGH : LOW);
   Serial.printf("Relay %s\n", on ? "ON" : "OFF");
+}
+
+void doorStop() {
+  digitalWrite(DOOR_UNLOCK_PIN, LOW);
+  digitalWrite(DOOR_LOCK_PIN, LOW);
+}
+
+void publishDoorState(const char* source) {
+  StaticJsonDocument<160> doc;
+  doc["state"]  = doorLocked ? "LOCKED" : "UNLOCKED";
+  doc["action"] = doorLocked ? "LOCK" : "UNLOCK";
+  doc["source"] = source;
+  doc["ts"]     = millis();
+  char buf[160];
+  serializeJson(doc, buf);
+  mqtt.publish(TOPIC_DOOR_STATE, buf, true);
+  Serial.printf("Door state: %s\n", buf);
+}
+
+void doorPulse(int pin, const char* label, int runTimeMs) {
+  doorStop();
+  delay(DOOR_DEAD_TIME_MS);
+  Serial.printf("Door %s pulse GPIO%d for %dms\n", label, pin, runTimeMs);
+  digitalWrite(pin, HIGH);
+  delay(runTimeMs);
+  digitalWrite(pin, LOW);
+}
+
+void doorUnlock(const char* source) {
+  doorPulse(DOOR_UNLOCK_PIN, "UNLOCK", DOOR_UNLOCK_TIME_MS);
+  doorLocked = false;
+  publishDoorState(source);
+}
+
+void doorLock(const char* source) {
+  doorPulse(DOOR_LOCK_PIN, "LOCK", DOOR_LOCK_TIME_MS);
+  doorLocked = true;
+  publishDoorState(source);
 }
 
 
@@ -133,6 +182,7 @@ void publishPower() {
 // MQTT CALLBACK
 // ============================================================
 void onMqttMessage(char* topic, byte* payload, unsigned int len) {
+  String topicStr(topic);
   String msg;
   for (unsigned int i = 0; i < len; i++) msg += (char)payload[i];
   Serial.printf("MQTT [%s]: %s\n", topic, msg.c_str());
@@ -145,6 +195,7 @@ void onMqttMessage(char* topic, byte* payload, unsigned int len) {
   if (action == "reset_wifi") {
     Serial.println(">>> reset_wifi received → clearing WiFi + cfg NVS → BLE mode");
     relaySet(false);
+    doorStop();
     mqtt.disconnect();
     delay(300);
     prefs.begin("wifi", false);
@@ -153,6 +204,30 @@ void onMqttMessage(char* topic, byte* payload, unsigned int len) {
     // device_id KHÔNG xoá — nó cố định suốt vòng đời thiết bị
     delay(200);
     ESP.restart();
+    return;
+  }
+
+  if (topicStr == TOPIC_FACE_RESULT) {
+    bool matched = doc["matched"] | false;
+    if (matched) {
+      String name = doc["name"] | "";
+      Serial.println("Face matched -> unlock door: " + name);
+      doorUnlock("face");
+    }
+    return;
+  }
+
+  if (topicStr == TOPIC_DOOR_CMD) {
+    String doorAction = action;
+    doorAction.toUpperCase();
+    if (doorAction == "UNLOCK" || doorAction == "OPEN") {
+      doorUnlock("mqtt");
+    } else if (doorAction == "LOCK" || doorAction == "CLOSE") {
+      doorLock("mqtt");
+    } else if (doorAction == "STOP") {
+      doorStop();
+      publishDoorState("mqtt");
+    }
     return;
   }
 
@@ -197,12 +272,15 @@ bool connectMQTT() {
   if (ok) {
     Serial.println(" OK");
     mqtt.subscribe(g_topicCmd.c_str());
+    mqtt.subscribe(TOPIC_DOOR_CMD);
+    mqtt.subscribe(TOPIC_FACE_RESULT);
 
     // Subscribe config topic theo Device ID cố định — hoạt động cả Android lẫn iOS
     mqtt.subscribe(("home/devices/config/" + g_deviceId).c_str());
     Serial.println("Config topic: home/devices/config/" + g_deviceId);
 
     publishState();
+    publishDoorState("boot");
 
     StaticJsonDocument<128> log;
     log["message"] = "ESP32-S3 " + g_room + " online";
@@ -423,6 +501,9 @@ void setup() {
 
   pinMode(RELAY_PIN, OUTPUT);
   digitalWrite(RELAY_PIN, LOW);
+  pinMode(DOOR_UNLOCK_PIN, OUTPUT);
+  pinMode(DOOR_LOCK_PIN, OUTPUT);
+  doorStop();
   pinMode(BOOT_PIN, INPUT_PULLUP);
 
   analogReadResolution(12);

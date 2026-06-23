@@ -23,10 +23,10 @@
 // ============================================================
 #define AP_NAME      "SmartHome-Voice"  // Tên AP khi chưa có WiFi
 
-#define MQTT_BROKER "93a7685af2254d02a616baa58c6ae86e.s1.eu.hivemq.cloud"
+#define MQTT_BROKER "1ef998ab22bd4df3bc84b3aea3525fa7.s1.eu.hivemq.cloud"
 #define MQTT_PORT   8883
-#define MQTT_USER   "smarthome"
-#define MQTT_PASS   "SmartHome@2026"
+#define MQTT_USER   "phungthinh"
+#define MQTT_PASS   "@Phungthinh2611"
 
 #define TOPIC_RESET_WIFI   "home/devices/voice/reset_wifi"
 #define TOPIC_STATUS       "home/devices/voice/status"

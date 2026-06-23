@@ -50,10 +50,10 @@ def _save_esp32_config():
 
 _load_esp32_config()  # đọc config ngay khi import
 
-MQTT_BROKER = "93a7685af2254d02a616baa58c6ae86e.s1.eu.hivemq.cloud"
+MQTT_BROKER = "1ef998ab22bd4df3bc84b3aea3525fa7.s1.eu.hivemq.cloud"
 MQTT_PORT   = 8883
-MQTT_USER   = "smarthome"
-MQTT_PASS   = "SmartHome@2026"
+MQTT_USER   = "phungthinh"
+MQTT_PASS   = "@Phungthinh2611"
 
 # Bypass proxy hệ thống — requests tới ESP32 trên LAN không qua proxy
 _NO_PROXY = {"http": "", "https": ""}

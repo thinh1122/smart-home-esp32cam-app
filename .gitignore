@@ -48,3 +48,6 @@ FLUTTER/ios-sideload-*/
 
 # Claude settings
 .claude/
+
+# Codex local restore snapshots
+.codex-snapshots/
