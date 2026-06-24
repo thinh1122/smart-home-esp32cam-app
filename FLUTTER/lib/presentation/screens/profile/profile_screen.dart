@@ -278,7 +278,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   ),
                 ),
               Text(
-                connected ? 'Đã kết nối' : 'Mất kết nối',
+                connected ? 'Đã kết nối (${MQTTService().lastTransport})' : 'Mất kết nối',
                 style: TextStyle(
                   color: connected ? ac.success : ac.error,
                   fontSize: 13, fontWeight: FontWeight.w600,

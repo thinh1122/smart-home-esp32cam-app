@@ -23,6 +23,9 @@ class MQTTService {
   final _systemLogsController = StreamController<Map<String, dynamic>>.broadcast();
   final _faceBboxController = StreamController<Map<String, dynamic>>.broadcast();
   final _devicePowerController = StreamController<Map<String, dynamic>>.broadcast();
+  Future<bool>? _connectFuture;
+  bool _isConnecting = false;
+  String _lastTransport = 'offline';
 
   Stream<Map<String, dynamic>> get faceRecognitionStream => _faceRecognitionController.stream;
   Stream<Map<String, dynamic>> get deviceStateStream => _deviceStateController.stream;
@@ -32,21 +35,49 @@ class MQTTService {
   Stream<Map<String, dynamic>> get devicePowerStream => _devicePowerController.stream;
 
   bool get isConnected => _isConnected;
+  String get lastTransport => _lastTransport;
 
   Future<bool> connect() async {
     if (_isConnected) return true;
+    if (_connectFuture != null) return _connectFuture!;
 
+    _connectFuture = _connect();
+    try {
+      return await _connectFuture!;
+    } finally {
+      _connectFuture = null;
+    }
+  }
+
+  Future<bool> _connect() async {
+    _isConnecting = true;
+    try {
+      if (await _connectWithTransport(useWebSocket: false)) return true;
+      debugPrint('MQTT TCP SSL failed — fallback to WebSocket SSL');
+      return _connectWithTransport(useWebSocket: true);
+    } finally {
+      _isConnecting = false;
+    }
+  }
+
+  Future<bool> _connectWithTransport({required bool useWebSocket}) async {
     try {
       _client?.disconnect();
       _client = null;
       final clientId = 'flutter_smarthome_${DateTime.now().millisecondsSinceEpoch}';
-      // TCP SSL port 8883 — dùng SecurityContext.defaultContext để OS tự xác thực cert HiveMQ
-      _client = MqttServerClient.withPort(AppConfig.mqttHost, clientId, AppConfig.mqttPort);
-      _client!.secure = true;
+      final port = useWebSocket ? AppConfig.mqttWsPort : AppConfig.mqttPort;
+      final server = useWebSocket ? 'wss://${AppConfig.mqttHost}/mqtt' : AppConfig.mqttHost;
+
+      _client = MqttServerClient.withPort(server, clientId, port);
+      _client!.secure = !useWebSocket;
       _client!.securityContext = SecurityContext.defaultContext;
+      _client!.useWebSocket = useWebSocket;
+      if (useWebSocket) {
+        _client!.websocketProtocols = MqttClientConstants.protocolsSingleDefault;
+      }
       _client!.logging(on: false);
       _client!.keepAlivePeriod = 60;
-      _client!.connectTimeoutPeriod = 10000;
+      _client!.connectTimeoutPeriod = useWebSocket ? 12000 : 6000;
       _client!.onDisconnected = _onDisconnected;
       _client!.onConnected = _onConnected;
 
@@ -58,16 +89,17 @@ class MQTTService {
           .withWillQos(MqttQos.atLeastOnce);
       _client!.connectionMessage = connMessage;
 
-      debugPrint('MQTT connecting TCP SSL: ${AppConfig.mqttHost}:${AppConfig.mqttPort}');
+      debugPrint('MQTT connecting ${useWebSocket ? "WSS" : "TCP SSL"}: $server:$port');
       await _client!.connect(AppConfig.mqttUsername, AppConfig.mqttPassword);
 
       debugPrint('MQTT state: ${_client!.connectionStatus!.state}');
       if (_client!.connectionStatus!.state == MqttConnectionState.connected) {
+        _lastTransport = useWebSocket ? 'WSS 8884' : 'TCP 8883';
         return true;
       }
       return false;
     } catch (e) {
-      debugPrint('MQTT connect error: $e');
+      debugPrint('MQTT ${useWebSocket ? "WSS" : "TCP SSL"} connect error: $e');
       _isConnected = false;
       connectionNotifier.value = false;
       return false;
@@ -221,6 +253,7 @@ class MQTTService {
   void _onDisconnected() {
     _isConnected = false;
     connectionNotifier.value = false;
+    if (_isConnecting) return;
     // Jitter ngẫu nhiên 0-3s tránh dồn dập reconnect cùng lúc với ESP32 khác, tránh broker từ chối hàng loạt
     final jitterMs = 3000 + (DateTime.now().millisecondsSinceEpoch % 3000);
     Future.delayed(Duration(milliseconds: jitterMs), () {

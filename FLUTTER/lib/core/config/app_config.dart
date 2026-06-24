@@ -4,6 +4,7 @@ class AppConfig {
   // MQTT Broker (HiveMQ Cloud — TCP SSL port 8883)
   static const String mqttHost     = '1ef998ab22bd4df3bc84b3aea3525fa7.s1.eu.hivemq.cloud';
   static const int    mqttPort     = 8883;
+  static const int    mqttWsPort   = 8884;
   static const String mqttUsername = 'phungthinh';
   static const String mqttPassword = '@Phungthinh2611';
 
